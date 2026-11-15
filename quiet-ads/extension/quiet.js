@@ -18,7 +18,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '1.1.0';
+  const VERSION = '1.1.1';
 
   if (typeof QuietAdsSites !== 'object' || typeof createOverlay !== 'function') return;
   const SITE = QuietAdsSites.find(location.hostname);
@@ -298,6 +298,7 @@
     riseScaled = false;
     for (const [el, entry] of ducked) {
       entry.rising = false;
+      entry.due = 0;
       if (adScope && !adScope.includes(el)) {
         // Not part of this commercial: it gets its volume back now.
         if (el.isConnected && near(el.volume, entry.ours) && el.volume !== entry.base) writeBack(el, entry.base);
