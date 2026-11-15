@@ -18,7 +18,7 @@ While your show plays, the wheel and those keys do what they always do.
 
 YouTube, Netflix, Hulu, Disney+, Max, Peacock, Prime Video, Paramount+, Pluto TV, Tubi, The Roku Channel, Plex, ESPN, discovery+, Twitch, NBC, CBS, Fandango at Home and Dailymotion, plus many other sites built on the common video players (PBS, AMC and NBC News, for example).
 
-In Chrome, Edge, Brave, Vivaldi and Opera, on Mac, Windows and Linux.
+In Chrome, Edge, Brave, Vivaldi, Opera and Firefox, on Mac, Windows and Linux.
 
 Commercials inside a live TV broadcast look the same as the show to a browser, so those play at your normal volume.
 
@@ -33,6 +33,8 @@ By hand, in Chrome:
 3. Type `chrome://extensions` in the address bar. Turn on Developer mode (top right) and leave it on.
 4. Click Load unpacked and pick that `extension` folder.
 5. Reload any streaming tabs you had open.
+
+In Firefox: open [quiet-ads-1.0.0.xpi](https://github.com/DrAlexHarrison/littlethings/releases/download/quiet-ads-v1.0.0/quiet-ads-1.0.0.xpi) in Firefox. It asks before installing; choose Continue to Installation, then Add.
 
 ## Good to know
 

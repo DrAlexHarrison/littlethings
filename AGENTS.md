@@ -20,7 +20,11 @@ Edge shows a notice about developer-mode extensions each time it starts. Closing
 
 ### Install in Firefox
 
-Open `about:debugging#/runtime/this-firefox`, click "Load Temporary Add-on", and pick `quiet-ads/extension/manifest.json`. Firefox keeps a temporary add-on until it closes, so this is repeated after each restart.
+Needs Firefox 140 or newer. Open the signed file in Firefox: https://github.com/DrAlexHarrison/littlethings/releases/download/quiet-ads-v1.0.0/quiet-ads-1.0.0.xpi
+
+Firefox shows a bar saying it stopped the site from installing software. Choose "Continue to Installation", then "Add". It stays installed across restarts. It does not update itself; a newer file on the Releases page is installed the same way.
+
+Mozilla signed that file for the repo owner. A changed copy of the folder runs in Firefox only as a temporary add-on: `about:debugging#/runtime/this-firefox`, "Load Temporary Add-on", pick `quiet-ads/extension/manifest.json`. Firefox drops it when it closes.
 
 ### Check that it works
 
@@ -28,7 +32,7 @@ Play something with commercials. During a commercial the sound drops and the ind
 
 ### Update
 
-Replace the folder's contents with the newer `quiet-ads/extension`, then click the reload arrow on the Quiet Ads card on the extensions page.
+Chrome and the others: replace the folder's contents with the newer `quiet-ads/extension`, then click the reload arrow on the Quiet Ads card on the extensions page.
 
 ### When a site stops getting quieter
 
