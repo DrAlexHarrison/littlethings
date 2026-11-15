@@ -34,6 +34,30 @@ const adOn = (page) => page.evaluate(() => document.getElementById('movie_player
 const adOff = (page) => page.evaluate(() => document.getElementById('movie_player').classList.remove('ad-showing'));
 const indicator = (page) => page.evaluate(() => window.__quietAds.state().mounted);
 const ui = (page, html) => page.evaluate((h) => { document.getElementById('ui').innerHTML = h; }, html);
+// The commercial is over and the show's volume has finished rising.
+const back = async (page, first = 900) => {
+  await sleep(first);
+  for (let i = 0; i < 150; i++) { const s = await state(page); if (!s.ad && !s.rising) return; await sleep(20); }
+};
+// What the element really holds, every 15 ms, until the rise has finished (or for `ms`).
+const samples = (page, ms = 2500, id = 'v1') => page.evaluate(([limit, i]) => new Promise((done) => {
+  const el = document.getElementById(i), out = [], t0 = Date.now(); let seenRise = false;
+  const t = setInterval(() => {
+    const s = window.__quietAds.state(); out.push(window.__nativeVol.call(el));
+    if (s.rising) seenRise = true;
+    if ((seenRise && !s.rising && !s.ad) || Date.now() - t0 > limit) { clearInterval(t); out.push(window.__nativeVol.call(el)); done(out); }
+  }, 15);
+}), [ms, id]);
+// Runs `js` in the page partway through the rise and reports what the element held just before.
+const midRise = (page, js) => page.evaluate((code) => new Promise((done) => {
+  const el = document.getElementById('v1'), t0 = Date.now(); let first = null;
+  const t = setInterval(() => {
+    const s = window.__quietAds.state(), v = window.__nativeVol.call(el);
+    if (s.rising && first === null) first = v;
+    if ((s.rising && first !== null && v > first * 1.5) || Date.now() - t0 > 3000) { clearInterval(t); (0, eval)(code); done({ at: v, rising: s.rising }); }
+  }, 5);
+}), js);
+const rises = (a) => a.every((v, i) => i === 0 || v >= a[i - 1] - 1e-9);
 
 const MARKERS = [
   ['Peacock countdown', 'https://www.peacocktv.com/watch/x', '<div data-testid="countdown">90</div>', true],
@@ -81,9 +105,17 @@ const MARKERS = [
     ok('indicator on screen', await indicator(page));
     await ui(page, ''); await sleep(200);
     ok('still down 200 ms after the marker left', closeTo(await vol(page), 0.12), await vol(page));
-    await sleep(700);
+    let seen = await samples(page);
+    let mids = seen.filter((v) => v > 0.13 && v < 0.79);
+    ok('the volume rises back in steps, not a jump', mids.length >= 6, [mids.length, seen.length]);
+    ok('it only ever rises, and never passes the show volume', rises(seen) && Math.max(...seen) <= 0.8, seen);
     ok('restored to exactly 0.8', (await vol(page)) === 0.8, await vol(page));
     ok('site still heard no volume event', (await pageEvents(page)).length === 0, await pageEvents(page));
+    await page.evaluate(() => { document.getElementById('v1').volume = 0.7; }); await sleep(120);
+    await page.evaluate(() => { document.getElementById('v1').muted = true; }); await sleep(120);
+    ok('right after the rise the site hears its own volume change and mute', JSON.stringify(await pageEvents(page)) === '[0.7,0.7]', await pageEvents(page));
+    await page.evaluate(() => { const v = document.getElementById('v1'); v.muted = false; v.volume = 0.8; }); await sleep(150);
+    await page.evaluate(() => { window.pageEvents.length = 0; });
     await sleep(1400);
     ok('indicator gone after the fade', !(await indicator(page)));
 
@@ -120,7 +152,7 @@ const MARKERS = [
     await page.evaluate(() => document.getElementById('box').remove());
     await page.mouse.move(900, 600); await page.mouse.wheel(0, 100); await sleep(120);
     ok('wheel away from the player scrolls the page as usual', (await state(page)).cfg.level === before && await page.evaluate(() => window.pageScrolls === 1), await page.evaluate(() => window.pageScrolls));
-    await ui(page, ''); await sleep(900);
+    await ui(page, ''); await back(page);
     ok('show returns at exactly 0.8', (await vol(page)) === 0.8, await vol(page));
     await page.context().close();
 
@@ -134,7 +166,7 @@ const MARKERS = [
     ok('on mute the site reads its real volume', (await pageEvents(page)).length >= 1 && (await pageEvents(page)).every((v) => v === 0.5), await pageEvents(page));
     await page.evaluate(() => { document.getElementById('v1').muted = false; }); await sleep(200);
     ok('mute and unmute leave it down', closeTo(await vol(page), 0.10), await vol(page));
-    await ui(page, ''); await sleep(900);
+    await ui(page, ''); await back(page);
     ok('restored to the site value 0.5', (await vol(page)) === 0.5, await vol(page));
     await page.evaluate(() => { const v = document.createElement('video'); v.id = 'v2'; v.src = window.SRC; v.loop = true; v.volume = 0.6; document.body.appendChild(v); });
     await ui(page, '<div data-testid="countdown">30</div>'); await sleep(300);
@@ -144,9 +176,47 @@ const MARKERS = [
     await sleep(500);
     ok('a newer copy takes over: one turn-down, not two', closeTo(await vol(page), 0.10), await vol(page));
     ok('one indicator, not two', await page.evaluate(() => document.querySelectorAll('[popover]').length === 1));
-    await ui(page, ''); await sleep(900);
+    await ui(page, ''); await back(page);
     ok('both restored', (await vol(page)) === 0.5 && (await vol(page, 'v2')) === 0.6, [await vol(page), await vol(page, 'v2')]);
     await page.context().close();
+
+    console.log('The rise back, interrupted');
+    page = await open(browser, 'https://www.peacocktv.com/watch/x');
+    const AD = '<div data-testid="countdown">90</div>';
+    await ui(page, AD); await sleep(300); await ui(page, '');
+    let m = await midRise(page, "document.getElementById('v1').volume = 0.5");
+    await sleep(900);
+    ok('you change the volume during the rise: yours stands (0.5)', m.rising && (await vol(page)) === 0.5, [m, await vol(page)]);
+    ok('and the site heard only that change', JSON.stringify(await pageEvents(page)) === '[0.5]', await pageEvents(page));
+    await page.evaluate(() => { document.getElementById('v1').volume = 0.8; }); await sleep(100);
+    await page.evaluate(() => { window.pageEvents.length = 0; });
+    await ui(page, AD); await sleep(300); await ui(page, '');
+    m = await midRise(page, "document.getElementById('v1').muted = true");
+    await sleep(900);
+    ok('mute during the rise: the site reads its real volume', m.rising && (await pageEvents(page)).length >= 1 && (await pageEvents(page)).every((v) => v === 0.8) && (await vol(page)) === 0.8, [m, await pageEvents(page), await vol(page)]);
+    await page.evaluate(() => { document.getElementById('v1').muted = false; }); await sleep(100);
+    await ui(page, AD); await sleep(300); await ui(page, '');
+    m = await midRise(page, "document.getElementById('ui').innerHTML = '<div data-testid=\"countdown\">30</div>'");
+    await sleep(500);
+    ok('a second commercial during the rise: back down to 0.12', m.rising && closeTo(await vol(page), 0.12), [m, await vol(page)]);
+    ok('and it still remembers the show volume (0.8)', (await state(page)).ducked.length === 1 && (await state(page)).ducked[0].base === 0.8, (await state(page)).ducked);
+    await ui(page, ''); await back(page);
+    ok('then the show returns at exactly 0.8', (await vol(page)) === 0.8, await vol(page));
+    await ui(page, AD); await sleep(300); await ui(page, '');
+    m = await midRise(page, "window.dispatchEvent(new Event('pagehide'))");
+    await sleep(60);
+    ok('leaving the page during the rise: 0.8 at once', m.rising && (await vol(page)) === 0.8 && !(await state(page)).rising, [m, await vol(page)]);
+    await page.context().close();
+    for (const [level, down] of [[0, 0], [100, 0.8], [5, 0.04]]) {
+      page = await open(browser, 'https://www.peacocktv.com/watch/x', { level });
+      await ui(page, AD); await sleep(300);
+      ok('level ' + level + ': commercial at ' + down, closeTo(await vol(page), down), await vol(page));
+      await ui(page, '');
+      seen = await samples(page, 1800);
+      ok('level ' + level + ': rises to exactly 0.8, never above', rises(seen) && Math.max(...seen) <= 0.8 && (await vol(page)) === 0.8, [seen.slice(-3), await vol(page)]);
+      ok('level ' + level + ': site heard nothing', (await pageEvents(page)).length === 0, await pageEvents(page));
+      await page.context().close();
+    }
 
     console.log('YouTube (volume scaled inside the page)');
     page = await open(browser, 'https://www.youtube.com/watch?v=x');
@@ -158,8 +228,16 @@ const MARKERS = [
     await page.keyboard.press('ArrowUp'); await sleep(150);
     ok('Up during the commercial: 20% of 0.6', closeTo(await real(page), 0.12) && (await vol(page)) === 0.6, [await real(page), await vol(page)]);
     await page.evaluate(() => window.__quietAds.setLevel(15));
-    await adOff(page); await sleep(900);
+    await adOff(page);
+    seen = await samples(page);
+    mids = seen.filter((v) => v > 0.1 && v < 0.59);
+    ok('the volume rises back in steps here too', mids.length >= 6 && rises(seen) && Math.max(...seen) <= 0.6, [mids.length, seen.slice(-3)]);
     ok('show returns at what the player asked for (0.6)', (await real(page)) === 0.6, await real(page));
+    ok('the player read 0.6 the whole time and heard only its own change', (await vol(page)) === 0.6 && JSON.stringify(await pageEvents(page)) === '[0.6]', await pageEvents(page));
+    await page.evaluate(() => { window.pageEvents.length = 0; document.getElementById('v1').volume = 0.7; }); await sleep(120);
+    await page.evaluate(() => { document.getElementById('v1').muted = true; }); await sleep(120);
+    ok('right after the rise the player hears its own volume change and mute', JSON.stringify(await pageEvents(page)) === '[0.7,0.7]' && (await real(page)) === 0.7, [await pageEvents(page), await real(page)]);
+    await page.evaluate(() => { const v = document.getElementById('v1'); v.muted = false; v.volume = 0.6; }); await sleep(150);
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('quietads:factor', { detail: 0.2 }))); await sleep(300);
     ok('a factor with no commercial behind it takes hold...', closeTo(await real(page), 0.12), await real(page));
     await sleep(5400);
@@ -174,7 +252,7 @@ const MARKERS = [
       await ui(page, html); await sleep(350);
       const during = await vol(page);
       ok(name + ': ' + (expect ? 'turned down' : 'left alone'), expect ? closeTo(during, 0.12) : during === 0.8, during);
-      await ui(page, ''); await sleep(900);
+      await ui(page, ''); await back(page);
       ok(name + ': back to 0.8', (await vol(page)) === 0.8, await vol(page));
       await page.context().close();
     }
@@ -193,7 +271,7 @@ const MARKERS = [
       ok(url.split('/')[2] + ': empty badge element leaves the show alone', (await vol(page)) === 0.8, await vol(page));
       await page.evaluate(() => window.badge(true)); await sleep(2700);
       ok(url.split('/')[2] + ': badge shown, turned down', closeTo(await vol(page), 0.12), await vol(page));
-      await page.evaluate(() => window.badge(false)); await sleep(1300);
+      await page.evaluate(() => window.badge(false)); await back(page, 1300);
       ok(url.split('/')[2] + ': back to 0.8', (await vol(page)) === 0.8, await vol(page));
       await page.context().close();
     }
@@ -205,7 +283,7 @@ const MARKERS = [
     ok('preloaded, paused commercial: show left alone', (await vol(page)) === 0.8, await vol(page));
     await page.evaluate(() => document.getElementById('ad').play()); await sleep(500);
     ok('commercial playing: turned down', closeTo(await vol(page, 'ad'), 0.12), await vol(page, 'ad'));
-    await page.evaluate(() => document.getElementById('ad').remove()); await sleep(900);
+    await page.evaluate(() => document.getElementById('ad').remove()); await back(page);
     ok('show back at 0.8', (await vol(page)) === 0.8, await vol(page));
     await page.context().close();
 
@@ -223,7 +301,7 @@ const MARKERS = [
     ok('another video on the same page is left alone', (await vol(page)) === 0.8, await vol(page));
     await page.evaluate(() => document.getElementById('jwv').pause()); await sleep(900);
     ok('pausing the commercial keeps it down', closeTo(await vol(page, 'jwv'), 0.10), await vol(page, 'jwv'));
-    await page.evaluate(() => document.getElementById('jw').classList.remove('jw-flag-ads')); await sleep(900);
+    await page.evaluate(() => document.getElementById('jw').classList.remove('jw-flag-ads')); await back(page);
     ok('restored to 0.7', (await vol(page, 'jwv')) === 0.7, await vol(page, 'jwv'));
     await page.evaluate(() => { const v = document.getElementById('jwv'); v.muted = true; v.play(); document.getElementById('jw').classList.add('jw-flag-ads'); }); await sleep(500);
     ok('a muted ad player (sidebar ad) is not a commercial break', (await state(page)).ad === 0 && (await vol(page, 'jwv')) === 0.7, await state(page));
@@ -236,7 +314,7 @@ const MARKERS = [
     ok('Google ad element waiting, paused: nothing happens', (await vol(page, 'imav')) === 0.9 && (await vol(page)) === 0.8);
     await page.evaluate(() => document.getElementById('imav').play()); await sleep(500);
     ok('Google ad element playing: only it is turned down', closeTo(await vol(page, 'imav'), 0.13) && (await vol(page)) === 0.8, [await vol(page, 'imav'), await vol(page)]);
-    await page.evaluate(() => { document.getElementById('ima').style.display = 'none'; }); await sleep(900);
+    await page.evaluate(() => { document.getElementById('ima').style.display = 'none'; }); await back(page);
     ok('ad container hidden: restored to 0.9', (await vol(page, 'imav')) === 0.9, await vol(page, 'imav'));
     await page.evaluate(() => { document.getElementById('ui').innerHTML = '<div class="ad-playing ad-showing" data-ad-playing>Ad 1 of 2 · Advertisement</div>'; }); await sleep(500);
     ok('ad-looking words and class names on an unknown site do nothing', (await vol(page)) === 0.8, await vol(page));

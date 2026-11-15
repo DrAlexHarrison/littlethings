@@ -20,7 +20,7 @@ Edge shows a notice about developer-mode extensions each time it starts. Closing
 
 ### Install in Firefox
 
-Needs Firefox 140 or newer. Open the signed file in Firefox: https://github.com/DrAlexHarrison/littlethings/releases/download/quiet-ads-v1.0.0/quiet-ads-1.0.0.xpi
+Needs Firefox 140 or newer. Open the signed file in Firefox: https://github.com/DrAlexHarrison/littlethings/releases/download/quiet-ads-v1.1.0/quiet-ads-1.1.0.xpi
 
 Firefox shows a bar saying it stopped the site from installing software. Choose "Continue to Installation", then "Add". It stays installed across restarts. It does not update itself; a newer file on the Releases page is installed the same way.
 

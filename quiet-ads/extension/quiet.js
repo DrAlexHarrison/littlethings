@@ -3,7 +3,7 @@
  *
  * While a commercial plays, the page's video and audio elements are set to a
  * fraction of their volume, a small indicator shows that level, and the mouse
- * wheel, Up/Down and W/S change it. When the show returns, the volume goes
+ * wheel, Up/Down and W/S change it. When the show returns, the volume rises
  * back to exactly what it was and none of those keys do anything.
  *
  * Rules this file keeps:
@@ -18,7 +18,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
 
   if (typeof QuietAdsSites !== 'object' || typeof createOverlay !== 'function') return;
   const SITE = QuietAdsSites.find(location.hostname);
@@ -31,6 +31,7 @@
   const POLL_MS = 500;
   const IDLE_MS = 10000;
   const FADE_MS = 1200;
+  const RETURN_MS = 600;          // the show's volume rises back over this long
 
   /* ----------------------------------------------------------- settings --- */
 
@@ -86,6 +87,8 @@
   const ducked = new Map();
   /** media element -> { v, n, t }: restores whose volumechange event is still due */
   const pending = new WeakMap();
+  /** media element -> { n, t }: events from steps of the rise that are still due after it was cut short */
+  const late = new WeakMap();
   /** elements waiting to be turned down once the page has seen its own change */
   const duckQueue = new Set();
   /** shadow roots already listening for volumechange */
@@ -150,8 +153,9 @@
     const current = el.volume;
     let entry = ducked.get(el);
     if (entry) {
-      if (near(current, entry.ours)) return;
-      if (!near(current, entry.base)) {
+      const held = near(current, entry.ours);
+      if (held && near(entry.ours, target(entry.base))) return;
+      if (!held && !near(current, entry.base)) {
         // The page or the viewer chose a new volume during the commercial.
         if (rebases >= MAX_REBASES) return;
         rebases += 1;
@@ -204,23 +208,139 @@
     }, 0);
   }
 
+  /** Everything back at once, including a rise that is under way. */
   function restoreAll() {
-    if (scaling) {
+    clearInterval(riseTimer);
+    riseTimer = 0;
+    if (scaling || riseScaled) {
       scaling = false;
+      riseScaled = false;
       sendFactor(1);
     }
     for (const [el, entry] of ducked) {
       // Only undo our own value. Anything else was set by someone else.
-      if (el.isConnected && near(el.volume, entry.ours) && !near(entry.ours, entry.base)) writeBack(el, entry.base);
+      if (!el.isConnected || !near(el.volume, entry.ours)) continue;
+      if (el.volume !== entry.base) writeBack(el, entry.base);
+      if (entry.due > 0) {
+        // Events from the last steps of the rise arrive after this and read the same value.
+        const p = pending.get(el) || { v: 0, n: 0, t: 0 };
+        p.v = entry.base;
+        p.n += entry.due;
+        p.t = Date.now();
+        pending.set(el, p);
+      }
     }
     ducked.clear();
+  }
+
+  /** The rise stops here for this element, with someone else's value in it. */
+  function leaveRise(el, entry) {
+    ducked.delete(el);
+    if (entry.due > 0) late.set(el, { n: entry.due, t: Date.now() });
+  }
+
+  /*
+   * The show's volume rises back over RETURN_MS instead of jumping. Each step
+   * multiplies by the same ratio, which the ear hears as an even rise, with a
+   * soft start and finish. Progress follows the clock, so a slow timer only
+   * means fewer steps.
+   */
+  let riseTimer = 0;
+  let riseStart = 0;
+  let riseScaled = false;  // the rise is a factor sent to page.js
+  let riseFrom = 0;
+
+  function between(from, to, t) {
+    if (to <= 0) return 0;
+    const start = Math.min(to, Math.max(from, to * 0.02));
+    const eased = t * t * (3 - 2 * t);
+    return Math.min(to, start * Math.pow(to / start, eased));
+  }
+
+  function riseBack() {
+    clearInterval(riseTimer);
+    riseTimer = 0;
+    riseScaled = false;
+    if (scaling) {
+      scaling = false;
+      riseFrom = factor();
+      if (riseFrom < 1) riseScaled = true; else sendFactor(1);
+    }
+    for (const [el, entry] of ducked) {
+      if (!el.isConnected || !near(el.volume, entry.ours) || el.volume === entry.base) ducked.delete(el);
+      else { entry.from = entry.ours; entry.rising = true; entry.due = 0; }
+    }
+    if (!ducked.size && !riseScaled) return;
+    riseStart = Date.now();
+    riseTimer = setInterval(riseStep, 30);
+  }
+
+  function riseStep() {
+    const t = (Date.now() - riseStart) / RETURN_MS;
+    if (!(t < 1)) { restoreAll(); return; }
+    if (riseScaled) sendFactor(between(riseFrom, 1, t));
+    for (const [el, entry] of ducked) {
+      // Gone, or set by someone else since the last step: theirs stands.
+      if (!el.isConnected || !near(el.volume, entry.ours)) { leaveRise(el, entry); continue; }
+      const next = between(entry.from, entry.base, t);
+      if (next === entry.ours) continue;
+      entry.ours = next;
+      try { el.volume = next; entry.due += 1; } catch (_) { ducked.delete(el); }
+    }
+    if (!ducked.size && !riseScaled) restoreAll();
+  }
+
+  /** A commercial started while the volume was still rising: stop the rise where it is. */
+  function stopRise() {
+    if (!riseTimer) return;
+    clearInterval(riseTimer);
+    riseTimer = 0;
+    riseScaled = false;
+    for (const [el, entry] of ducked) {
+      entry.rising = false;
+      if (adScope && !adScope.includes(el)) {
+        // Not part of this commercial: it gets its volume back now.
+        if (el.isConnected && near(el.volume, entry.ours) && el.volume !== entry.base) writeBack(el, entry.base);
+        ducked.delete(el);
+      }
+    }
   }
 
   function onVolumeChange(event) {
     const el = event.target;
     if (!el || (el.tagName !== 'VIDEO' && el.tagName !== 'AUDIO')) return;
 
+    const stale = late.get(el);
+    if (stale && stale.n > 0) {
+      if (Date.now() - stale.t < 1000) {
+        // A step of a rise that was cut short. The change that cut it has its own event.
+        stale.n -= 1;
+        event.stopImmediatePropagation();
+        return;
+      }
+      stale.n = 0;
+    }
+
     const entry = ducked.get(el);
+    if (entry && entry.rising) {
+      if (near(el.volume, entry.ours) && el.muted === entry.muted) {
+        // A step of the rise. The page never hears about it.
+        if (entry.due > 0) entry.due -= 1;
+        event.stopImmediatePropagation();
+        return;
+      }
+      // Someone else's change during the rise: theirs stands. Mute was switched
+      // if the volume is still ours, and players save volume and mute together,
+      // so the page reads its real volume.
+      const mine = entry.due > 0; // this event is from a step; theirs comes after it
+      if (mine) entry.due -= 1;
+      leaveRise(el, entry);
+      if (near(el.volume, entry.ours)) {
+        try { el.volume = entry.base; } catch (_) { /* element is gone */ }
+      }
+      if (mine) event.stopImmediatePropagation();
+      return;
+    }
     if (entry) {
       const ours = near(el.volume, entry.ours) && !near(entry.ours, entry.base);
       if (ours && el.muted === entry.muted) {
@@ -269,12 +389,13 @@
     rebases = 0;
     quietedAudible = false;
     hinted = false;
+    stopRise();
     duckAll();
     if (quietedAudible) showHud();
   }
 
-  function endAd() {
-    restoreAll();
+  function endAd(atOnce) {
+    if (atOnce) restoreAll(); else riseBack();
     hideHud();
     adSince = 0;
     adScope = null;
@@ -527,7 +648,7 @@
   }
 
   function onPageHide() {
-    if (adSince) endAd();
+    if (adSince) endAd(true); else restoreAll();
   }
 
   const MEDIA_EVENTS = ['playing', 'play', 'loadedmetadata'];
@@ -565,7 +686,7 @@
     state: () => ({
       site: SITE.name, running, armed, ad: adSince ? Math.round((Date.now() - adSince) / 1000) : 0,
       signal: adSignal, capped, rebases, shown: hudShown, mounted: !!(hud && hud.host.isConnected),
-      cfg: Object.assign({}, cfg),
+      cfg: Object.assign({}, cfg), rising: !!riseTimer,
       ducked: Array.from(ducked.values()),
       volumes: Array.from(document.querySelectorAll('video, audio')).map((el) => el.volume),
     }),

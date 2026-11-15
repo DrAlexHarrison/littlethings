@@ -7,7 +7,8 @@
  * sits on the volume property itself: whatever the player asks for is
  * multiplied by a factor on the way in, 1 during the show and the commercial
  * level during a commercial. The player always reads back the number it asked
- * for, so its slider and saved volume never move.
+ * for, so its slider and saved volume never move, and it hears no volume event
+ * for a change it cannot see.
  *
  * Nothing changes until quiet.js asks for it. The factor is never above 1,
  * and it returns to 1 by itself if quiet.js stops reporting.
@@ -28,6 +29,8 @@
   const state = new WeakMap();
   /** every element seen, so one that is off the page still gets put back */
   const seen = new Set();
+  /** element -> { n, t }: volumechange events still to come from writes made here */
+  const expected = new WeakMap();
 
   function remember(el, asked) {
     state.set(el, { asked, applied: native.get.call(el) });
@@ -67,7 +70,14 @@
     const known = state.get(el);
     // No record, or changed behind this script: what the element holds is the page's value.
     const asked = known && known.applied === actual ? known.asked : actual;
-    native.set.call(el, asked * factor);
+    const next = asked * factor;
+    if (next !== actual) {
+      const o = expected.get(el) || { n: 0, t: 0 };
+      o.n += 1;
+      o.t = Date.now();
+      expected.set(el, o);
+    }
+    native.set.call(el, next);
     remember(el, asked);
   }
 
@@ -88,6 +98,15 @@
     clearTimeout(expireTimer);
     if (factor < 1) expireTimer = setTimeout(() => setFactor(1), EXPIRE_MS);
   });
+
+  // The page's own number did not change, so the event has nothing to tell it.
+  window.addEventListener('volumechange', (event) => {
+    const o = expected.get(event.target);
+    if (!o || o.n <= 0) return;
+    if (Date.now() - o.t > 1000) { o.n = 0; return; }
+    o.n -= 1;
+    event.stopImmediatePropagation();
+  }, true);
 
   // quiet.js asks whether this script is in the page before relying on it.
   document.addEventListener('quietads:ping', () => {

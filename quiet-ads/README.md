@@ -34,13 +34,13 @@ By hand, in Chrome:
 4. Click Load unpacked and pick that `extension` folder.
 5. Reload any streaming tabs you had open.
 
-In Firefox: open [quiet-ads-1.0.0.xpi](https://github.com/DrAlexHarrison/littlethings/releases/download/quiet-ads-v1.0.0/quiet-ads-1.0.0.xpi) in Firefox. It asks before installing; choose Continue to Installation, then Add.
+In Firefox: open [quiet-ads-1.1.0.xpi](https://github.com/DrAlexHarrison/littlethings/releases/download/quiet-ads-v1.1.0/quiet-ads-1.1.0.xpi) in Firefox. It asks before installing; choose Continue to Installation, then Add.
 
 ## Good to know
 
 Quiet Ads runs on your computer and sends nothing anywhere.
 
-To switch it off on one site, right-click the Quiet Ads icon in your toolbar and choose "This can read and change site data".
+To switch it off on one site in Chrome, right-click the Quiet Ads icon in your toolbar and choose "This can read and change site data".
 
 Sites change their players now and then. If commercials on one stop getting quieter, your AI can fix it; [AGENTS.md](../AGENTS.md) shows where.
 
