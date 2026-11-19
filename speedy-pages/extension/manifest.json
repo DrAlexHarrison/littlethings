@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Speedy Pages",
+  "version": "1.0.0",
+  "description": "Shop Walmart and Amazon from the keyboard: move a ring from item to item, add, set counts, check out, and turn pages.",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.walmart.com/*",
+        "https://www.amazon.com/*"
+      ],
+      "js": [
+        "speedy-pages.user.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "speedy-pages@littlethings",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    }
+  }
+}
