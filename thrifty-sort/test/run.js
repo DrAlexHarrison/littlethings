@@ -252,7 +252,7 @@ ${opts.ticker ? '<div id="clock" data-label="deal-clock">Deal ends in 0</div>' :
 </script></body></html>`;
 }
 
-function amazonTile(x, i, noPrice) {
+function amazonTile(x, i, noPrice, clock) {
   if (x.block) return `<div class="AdHolder s-result-item s-widget s-flex-full-width" data-label="${x.block}"><span class="puis-sponsored-label-text">Sponsored</span> Brand row</div>`;
   const money = (v) => `<span class="a-offscreen">$${v.toFixed(2)}</span><span aria-hidden="true">$${v.toFixed(2)}</span>`;
   const unit = x.unit ? (() => { const [amount, per] = x.unit.split('/'); return `<span class="a-size-base a-color-secondary">(<span class="a-price a-text-price" data-a-size="b" data-a-color="secondary"><span class="a-offscreen">${amount}</span><span aria-hidden="true">${amount}</span></span>/${per})</span>`; })() : '';
@@ -264,6 +264,7 @@ function amazonTile(x, i, noPrice) {
       : `<div class="a-row a-size-base a-color-base"><a class="a-link-normal s-no-hover" href="/dp/${x.id}"><span class="a-price" data-a-color="base">${money(x.price)}</span></a> ${unit}</div>`) +
     (x.again ? '<div class="a-row a-size-base a-color-secondary"><span>Save more with Subscribe &amp; Save</span></div>' : '') +
     (x.oos ? '<div class="a-row"><span class="a-color-price">Currently unavailable.</span></div>' : '') +
+    (clock ? '<div class="a-row a-size-base a-color-secondary">Ends in <span id="clock">02:00:00</span></div>' : '') +
     '</div></div></div>';
 }
 const amazonStrip = (max, cur) => {
@@ -298,7 +299,7 @@ body{margin:0;font:14px/1.3 sans-serif;width:1200px}
 <div style="position:relative;height:40px">${menu}${pop}</div>
 <div class="s-main-slot s-result-list s-search-results sg-row">
 <div class="s-breadcrumb" data-label="results-header">1-48 of over 3,000 results for "${esc(u.searchParams.get('k'))}"</div>
-${ordered.map((x, i) => amazonTile(x, i, opts.noPrice)).join('')}${amazonStrip(cat.maxPage, page)}
+${ordered.map((x, i) => amazonTile(x, i, opts.noPrice, opts.clock && i === 1)).join('')}${amazonStrip(cat.maxPage, page)}
 </div>
 <script>
 (() => {
@@ -333,6 +334,7 @@ function standIn(url) {
     const k = u.searchParams.get('k');
     if (k === 'throw pillow covers') return amazonPage(url, Z_PILLOWS);
     if (k === 'medium roast coffee') return amazonPage(url, { maxPage: 1, pages: { 1: Z_COFFEE.pages[1] } }, { noPrice: true });
+    if (k === 'dark roast coffee') return amazonPage(url, { maxPage: 1, pages: { 1: Z_COFFEE.pages[1] } }, { clock: true });
     return amazonPage(url, Z_COFFEE);
   }
   return null;
@@ -407,6 +409,21 @@ const noteOf = (page, key) => page.evaluate(([keys, key]) => {
   }
   return 'not found';
 }, [KEYS, key]);
+const watch = (page, tickMs) => page.evaluate((tickMs) => {
+  const w = window.__watch = { writes: 0, reads: 0, early: null };
+  new MutationObserver((rs) => { w.writes += rs.length; }).observe(document.documentElement, { attributes: true, subtree: true });
+  for (const proto of [Document.prototype, Element.prototype]) {
+    const all = proto.querySelectorAll;
+    proto.querySelectorAll = function (...a) { w.reads++; return all.apply(this, a); };
+  }
+  setTimeout(() => { w.early = { writes: w.writes, reads: w.reads }; }, 2000);
+  if (!tickMs) return;
+  const clock = document.getElementById('clock');
+  let left = 7200;
+  const two = (n) => String(n).padStart(2, '0');
+  setInterval(() => { left--; clock.textContent = two(Math.floor(left / 3600)) + ':' + two(Math.floor(left / 60) % 60) + ':' + two(left % 60); }, tickMs);
+}, tickMs);
+const watched = (page) => page.evaluate(() => ({ writes: window.__watch.writes, reads: window.__watch.reads, early: window.__watch.early }));
 const visible = (page, sel) => page.evaluate((s) => [...document.querySelectorAll(s)].some((n) => n.getBoundingClientRect().height > 0 && getComputedStyle(n).display !== 'none'), sel);
 const traces = (page) => page.evaluate(() => ({
   ourNodes: document.querySelectorAll('.wups-tile,.wups-status,.wups-divider,.wups-more,.wups-opt').length,
@@ -574,6 +591,12 @@ const W_SITE_MENU = ['Best Match', 'Price: low to high', 'Price: high to low', '
     tab = await open(browser, 'https://www.walmart.com/search?q=coffee+beans');
     page = tab.page;
     ok('the sort is on', (await info(page)).active === true);
+    await sleep(3000);
+    await watch(page, 0);
+    await until(page, () => window.__watch.early, null, 8000);
+    let seen = await watched(page);
+    ok('the page is read again as the clock ticks', seen.early.reads > 0, seen);
+    ok('and nothing on it is rewritten', seen.early.writes === 0, seen);
     const ticks = await page.evaluate(() => document.getElementById('clock').textContent);
     const opened = Date.now();
     await click(page, 'button[aria-label^="Sort by"]');
@@ -763,6 +786,24 @@ const W_SITE_MENU = ['Best Match', 'Price: low to high', 'Price: high to low', '
     await click(page, '.wups-opt a');
     await sleep(400);
     same('picking it sorts them by price per count', products(await screen(page)), PILLOWS_SORTED);
+    await page.context().close();
+
+    console.log('Amazon: a deal countdown on a product');
+    tab = await open(browser, 'https://www.amazon.com/s?k=dark+roast+coffee');
+    page = tab.page;
+    same('the results are sorted', products(await screen(page)).slice(0, 3), ['Z4 Maxwell House', 'Z3 Folgers store price wrong', 'Z1 Amazon Fresh']);
+    await sleep(3000);
+    await watch(page, 100);
+    await until(page, () => window.__watch.early, null, 8000);
+    seen = await watched(page);
+    ok('the countdown ticks', (await page.evaluate(() => document.getElementById('clock').textContent)) !== '02:00:00');
+    ok('for two seconds of ticks the page is not read again', seen.early.reads === 0, seen);
+    ok('and nothing on it is rewritten', seen.early.writes === 0, seen);
+    const readLater = await until(page, () => window.__watch.reads > 0, null, 8000);
+    seen = await watched(page);
+    ok('the page is read again within a few seconds', readLater, seen);
+    ok('still with nothing rewritten', seen.writes === 0, seen);
+    same('and the order holds', products(await screen(page)).slice(0, 3), ['Z4 Maxwell House', 'Z3 Folgers store price wrong', 'Z1 Amazon Fresh']);
     await page.context().close();
 
     console.log('Amazon: prices the script cannot read');

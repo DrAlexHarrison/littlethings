@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Thrifty Sort
 // @namespace    https://github.com/DrAlexHarrison/littlethings
-// @version      1.8.0
+// @version      1.8.1
 // @description  Sorts Walmart and Amazon search results by price per ounce, per fluid ounce or per count, cheapest first, and adds those sorts to each site's Sort menu.
 // @match        https://www.walmart.com/*
 // @match        https://www.amazon.com/*
@@ -981,7 +981,7 @@ fieldset.wups-sel > .wups-opt.wups-cur i.ld-Check{opacity:1 !important}
     if (!site.listing()) return standDown();
     const stack = site.stack();
     if (!stack) return site.syncMenu([], null);
-    stack.classList.add('wups-stack');
+    if (!stack.classList.contains('wups-stack')) stack.classList.add('wups-stack');
 
     const key = site.searchKey();
     if (!state || state.key !== key) resetFor(key);
@@ -1037,10 +1037,11 @@ fieldset.wups-sel > .wups-opt.wups-cur i.ld-Check{opacity:1 !important}
     if (!state.active) {
       for (const n of natives) {
         setOrder(n.el, null);
-        n.el.classList.remove('wups-oos', 'wups-hide');
+        n.el.classList.toggle('wups-oos', false);
+        n.el.classList.toggle('wups-hide', false);
         setIfChanged(n.noteEl, 'data-wups-note', null);
       }
-      document.documentElement.classList.remove('wups-merged');
+      document.documentElement.classList.toggle('wups-merged', false);
       state.counts = null;
       renderStatus();
       return site.syncMenu(menuOptions(), null);
@@ -1070,7 +1071,8 @@ fieldset.wups-sel > .wups-opt.wups-cur i.ld-Check{opacity:1 !important}
     live.forEach((r) => {
       if (r.native) {
         setOrder(r.native.el, r.order);
-        r.native.el.classList.remove('wups-oos', 'wups-hide');
+        r.native.el.classList.toggle('wups-oos', !!r.oos);
+        r.native.el.classList.toggle('wups-hide', false);
         setIfChanged(r.native.noteEl, 'data-wups-note', r.note);
         return;
       }
@@ -1100,7 +1102,7 @@ fieldset.wups-sel > .wups-opt.wups-cur i.ld-Check{opacity:1 !important}
         state.tileEls.delete(id);
       }
     }
-    for (const r of rows) if (r.oos && r.native) r.native.el.classList.add('wups-oos');
+    for (const r of rows) if (r.oos && r.native) r.native.el.classList.toggle('wups-oos', true);
     const firstTile = natives.find((n) => n.kind !== 'other');
     for (const n of natives) {
       if (n.kind === 'product') continue;
@@ -1219,6 +1221,8 @@ ${site.css}`;
 
   const QUIET_MS = 150;
   const MAX_WAIT_MS = 1000;
+  const SLOW_MS = 3000;
+  let slowTimer = 0;
   let timer = 0;
   let waitingSince = 0;
   const runNow = () => {
@@ -1240,6 +1244,10 @@ ${site.css}`;
       if (t && t.closest('.wups-tile,.wups-status,.wups-opt,.wups-divider,.wups-more')) continue;
       const nodes = [...r.addedNodes, ...r.removedNodes];
       if (nodes.length && nodes.every(ours)) continue;
+      if (nodes.length && nodes.every((n) => n.nodeType !== 1 && /^[\s\d:.,]*$/.test(n.data || ''))) {
+        if (!slowTimer) slowTimer = setTimeout(() => { slowTimer = 0; schedule(); }, SLOW_MS);
+        continue;
+      }
       schedule();
       return;
     }
@@ -1262,6 +1270,7 @@ ${site.css}`;
     observer.disconnect();
     clearInterval(hrefWatch);
     clearTimeout(timer);
+    clearTimeout(slowTimer);
     document.removeEventListener('click', onMenuClick, true);
     document.removeEventListener('keydown', onMenuKey, true);
     document.removeEventListener('change', onMenuChange, true);

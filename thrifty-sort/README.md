@@ -17,7 +17,7 @@ Chrome, Edge, Brave, Vivaldi, Opera:
 3. Open `chrome://extensions`, turn on Developer mode, click Load unpacked and pick that folder.
 4. Reload your Walmart and Amazon tabs.
 
-Firefox: open [thrifty-sort-1.8.0.xpi](https://github.com/DrAlexHarrison/littlethings/releases/download/thrifty-sort-v1.8.0/thrifty-sort-1.8.0.xpi), then Continue to Installation, then Add.
+Firefox: open [thrifty-sort-1.8.1.xpi](https://github.com/DrAlexHarrison/littlethings/releases/download/thrifty-sort-v1.8.1/thrifty-sort-1.8.1.xpi), then Continue to Installation, then Add.
 
 Or ask your AI to "install Thrifty Sort from github.com/DrAlexHarrison/littlethings".
 

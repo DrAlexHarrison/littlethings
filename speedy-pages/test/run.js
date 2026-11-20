@@ -94,31 +94,37 @@ const amazonSearch = (url, pages) => {
 
 const LOG = `const log = (x) => { const a = JSON.parse(sessionStorage.getItem('wm.log') || '[]'); a.push(x); sessionStorage.setItem('wm.log', JSON.stringify(a)); };
   window.seen = []; window.addEventListener('keydown', (e) => window.seen.push(e.key));`;
+const MORE = '<section data-testid="recommendation-carousel" style="padding:0 24px"><h2>More</h2><ul id="car" style="display:flex;gap:12px;overflow-x:scroll;width:773px;padding:0;margin:0">' +
+  Array.from({ length: 8 }, (_, i) => '<li style="flex:none;width:180px;height:300px;margin:0;border:0"><div data-item-id="c' + i + '" role="group" style="height:290px"><button data-automation-id="heart-item" aria-label="Remove from Favorites list, Snack ' + i + '">h</button><img alt=""><p>Snack ' + i + '</p><button data-automation-id="add-to-cart" aria-label="Add to cart - Snack ' + i + '">Add</button></div></li>').join('') + '</ul></section>';
+
 const walmartCart = (mode) => `<!doctype html><html><head><meta charset="utf-8"><title>Cart</title><style>
   body{margin:0;font:14px sans-serif} #slots{display:flex;gap:16px;padding:120px 24px 24px} #slots button{width:92px;height:81px}
-  #go{position:absolute;right:24px;top:40px;width:331px;height:40px} li{list-style:none;height:270px;width:773px;position:relative;margin-bottom:12px;border-bottom:1px solid #ccc}
+  #go{position:absolute;right:120px;top:40px;width:331px;height:40px} li{list-style:none;height:270px;width:773px;position:relative;margin-bottom:12px;border-bottom:1px solid #ccc}
   li img{width:136px;height:136px;background:#ccd;display:block} li .acts{position:absolute;right:0;bottom:16px;display:flex;gap:24px;align-items:center} li .acts button{height:32px}
   [role=dialog]{position:fixed;left:340px;top:160px;width:560px;padding:24px;background:#fff;border:1px solid #333;z-index:9} [role=dialog] button{height:40px;min-width:120px} [role=dialog] label{display:block;height:48px}
   #veil{position:fixed;inset:0;background:rgba(0,0,0,.4)} #toast{position:fixed;left:40%;bottom:16px}</style></head><body>
 <input id="box" type="search" data-automation-id="header-input-search" placeholder="Search">
 <button id="go" data-automation-id="checkout">${mode === 'amend' ? "Add items to today's order" : 'Continue to checkout'}</button>
-<div id="slots">${[['Express 27-57 min $19.95 is now $10.00'], ['Today 3 hours or less $14.95 is now $5.00'], ['Today 3pm to 5pm 3pm-5pm Free with'], ['Today 4pm to 6pm 4pm-6pm Free with']].map((t, i) => `<button data-automation-id="cart-slot-shortcut-slot-${i}">${t[0]}</button>`).join('')}</div>
+<div id="slots">${[['Express 27-57 min $19.95 is now $10.00'], ['Today 3 hours or less $14.95 is now $5.00'], ['Today3pm to 5pm3pm-5pmFree with'], ['Today4pm to 6pm4pm-6pmFree with']].map((t, i) => `<button data-automation-id="cart-slot-shortcut-slot-${i}">${t[0]}</button>`).join('')}</div>
 <ul id="items" style="padding:0 24px;margin:0">${['Bread', 'Milk', 'Eggs'].map((n, i) => `<li data-n="${n}"><a href="/ip/seort/${1000 + i}"><img alt=""></a><span>${n}</span><div class="acts"><button aria-label="Remove ${n}">Remove</button><button aria-label="Save for later: ${n}">Save for later</button>
-  <div data-testid="quantity-stepper"><button data-testid="quantity-stepper-dec-button" aria-label="Decrease quantity ${n}, Current Quantity 1">-</button><span data-testid="quantity-label">1</span><button data-testid="quantity-stepper-inc-button" aria-label="Increase quantity ${n}, Current Quantity 1">+</button></div></div></li>`).join('')}</ul>
+  <div data-testid="quantity-stepper"><button data-testid="quantity-stepper-dec-button" aria-label="Decrease quantity ${n}, Current Quantity 1">-</button><span data-testid="quantity-label">1</span><button data-testid="quantity-stepper-inc-button" aria-label="Increase quantity ${n}, Current Quantity 1">+</button></div></div></li>`).join('')}</ul>${mode === 'more' ? MORE : ''}
 <div style="height:1500px"></div>
 <script>${LOG}
   let gone = null;
   document.addEventListener('click', (e) => {
     const b = e.target.closest && e.target.closest('button, input[type=radio]'); if (!b) return;
     const li = b.closest('li'); const label = b.getAttribute('aria-label') || ''; const text = b.textContent.trim();
-    if (b.matches('[data-automation-id^="cart-slot-shortcut-slot-"]')) { log('slot:' + b.getAttribute('data-automation-id').slice(-1));
+    if (b.matches('[data-automation-id="heart-item"]')) log('heart');
+    else if (b.matches('[data-automation-id="add-to-cart"]')) { const card = b.closest('[data-item-id]'); const nm = card.querySelector('p').textContent; log('add:' + card.getAttribute('data-item-id'));
+      b.outerHTML = '<div data-testid="quantity-stepper"><button data-testid="quantity-stepper-dec-button" aria-label="Decrease quantity ' + nm + ', Current Quantity 1">-</button><span data-testid="quantity-label">1</span><button data-testid="quantity-stepper-inc-button" aria-label="Increase quantity ' + nm + ', Current Quantity 1">+</button></div>'; }
+    else if (b.matches('[data-automation-id^="cart-slot-shortcut-slot-"]')) { log('slot:' + b.getAttribute('data-automation-id').slice(-1));
       const veil = document.createElement('div'); veil.id = 'veil'; document.body.append(veil);
       setTimeout(() => { veil.remove(); document.getElementById('slots').outerHTML = '<p id="chosen" style="padding:120px 24px 24px">Delivery from store today, ' + (/(\\d+pm-\\d+pm)/.exec(text) || ['', 'soon'])[1] + '</p>'; }, 1500); }
     else if (li && /^(In|De)crease/.test(label)) { const lab = li.querySelector('[data-testid="quantity-label"]'); const n = Math.max(0, parseInt(lab.textContent, 10) + (/^Increase/.test(label) ? 1 : -1)); lab.textContent = String(n);
       for (const x of li.querySelectorAll('[data-testid^="quantity-stepper-"]')) x.setAttribute('aria-label', x.getAttribute('aria-label').replace(/Current Quantity \\d+/, 'Current Quantity ' + n)); }
     else if (li && /^Remove /.test(label)) { log('remove:' + li.dataset.n); gone = { li, next: li.nextElementSibling }; setTimeout(() => { li.remove();
-      const t = document.createElement('div'); t.id = 'toast'; t.innerHTML = 'Removed <button>Undo</button>'; document.body.append(t); setTimeout(() => t.remove(), 4000); }, 100); }
-    else if (li && /^Save for later/.test(label)) { log('save:' + li.dataset.n); setTimeout(() => li.remove(), 100); }
+      const t = document.createElement('div'); t.id = 'toast'; t.innerHTML = 'Removed <button>Undo</button>'; document.body.append(t); setTimeout(() => t.remove(), 4000); }, window.slowRow || 100); }
+    else if (li && /^Save for later/.test(label)) { log('save:' + li.dataset.n); setTimeout(() => li.remove(), window.slowRow || 100); }
     else if (text === 'Undo') { log('undo'); document.getElementById('items').insertBefore(gone.li, gone.next); b.closest('#toast').remove(); }
     else if (b.id === 'go') { log('go:' + text); if (text === 'Continue to checkout') setTimeout(() => { const d = document.createElement('div'); d.setAttribute('role', 'dialog'); d.setAttribute('aria-labelledby', 'gif');
       d.innerHTML = '<div><button aria-label="Close dialog" type="button">x</button><h2 id="gif"><span> Get it faster! </span></h2></div><div data-testid="dual-nudge-express-slot"><label><input name="Slot List" type="radio"> Express 27-57 min $10.00</label></div><div data-testid="dual-nudge-evergreen-slot"><label><input name="Slot List" type="radio"> Today 3 hours or less $5.00</label></div><div><button type="button">Reserve</button> <button type="button">No thanks</button></div>';
@@ -825,13 +831,13 @@ const press = async (page, ...keys) => { for (const k of keys) await page.keyboa
       ok('Down: the card under it, and the page follows to that row\'s stop', r && r.on === 5 && (await at()) === stop(1), [r, await at(), stop(1)]);
       await press(page, 'Enter'); await sleep(30);
       r = await ringOf();
-      ok('Enter: the ring turns solid and the badge says 1 at once, marked as not yet the store\'s', r && r.open && r.dashed === 'solid' && r.badge === '1' && r.waiting, r);
+      ok('Enter: the ring turns solid and the count asked for shows beside Add at once, with no corner count', r && r.open && r.dashed === 'solid' && r.badge === null && r.hint === '1↓↑', r);
       await sleep(400);
       r = await ringOf();
-      ok('the store has it: one in the cart, the badge solid, the hint now Down and Up', (await cart()) === '{"i5":1}' && r.badge === '1' && !r.waiting && r.hint === '↓↑', [await cart(), r]);
+      ok('the store has it: one in the cart, the hint now Down and Up', (await cart()) === '{"i5":1}' && r.badge === null && r.hint === '↓↑', [await cart(), r]);
       await press(page, 'ArrowUp', 'ArrowUp'); await sleep(30);
       r = await ringOf();
-      ok('Up twice while open: the badge says 3 before the store does, and the ring stays put', r.on === 5 && r.badge === '3' && r.waiting, r);
+      ok('Up twice while open: the ring stays put, and no corner count shows while the count changes', r.on === 5 && r.open && r.badge === null, r);
       await sleep(900);
       r = await ringOf();
       ok('the store caught up, press by press: 3 in the cart', (await cart()) === '{"i5":3}' && !r.waiting, [await cart(), await page.evaluate(() => window.presses.join(' '))]);
@@ -845,7 +851,7 @@ const press = async (page, ...keys) => { for (const k of keys) await page.keyboa
       ok('Down now moves the ring again', r.on === 9 && (await at()) === stop(2), [r, await at(), stop(2)]);
       await press(page, '='); await sleep(400);
       r = await ringOf();
-      ok('= adds one with no Enter first, and the count stays closed', (await cart()) === '{"i5":2,"i9":1}' && !r.open && r.badge === '1', [await cart(), r]);
+      ok('= adds one with no Enter first, and the count stays closed', (await cart()) === '{"i5":2,"i9":1}' && !r.open && r.badge === null, [await cart(), r]);
       await press(page, '='); await press(page, '='); await sleep(700);
       ok('= twice more: 3', JSON.parse(await cart()).i9 === 3, await cart());
       await press(page, '-'); await sleep(400);
@@ -855,6 +861,7 @@ const press = async (page, ...keys) => { for (const k of keys) await page.keyboa
       ok('Tab: the next card', r.on === 10, r);
       await press(page, 'Shift+Tab'); await sleep(350);
       ok('Shift+Tab: back', (await ringOf()).on === 9, await ringOf());
+      ok('back on a card after leaving it: its count shows in the corner', (await ringOf()).badge === '2', await ringOf());
       await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z'); await sleep(900);
       r = await ringOf();
       ok('Undo: the item goes back to what it was before that run of presses (2 back to 0), however many taps it took', (await cart()) === '{"i5":2}' && r.on === 9, [await cart(), r]);
@@ -866,7 +873,7 @@ const press = async (page, ...keys) => { for (const k of keys) await page.keyboa
       ok('a number while the count is open sets the count', (await cart()) === '{"i5":4}' && (await ui(page)).cur === 1, [await cart(), await ui(page)]);
       await press(page, '9'); await sleep(900);
       r = await ringOf();
-      ok('a count the store will not take (it stops at 6): the badge ends on what the store has', (await cart()) === '{"i5":6}' && r.badge === '6' && !r.waiting, [await cart(), r]);
+      ok('a count the store will not take (it stops at 6): the cart ends on what the store has', (await cart()) === '{"i5":6}' && r.badge === null, [await cart(), r]);
       await press(page, '2'); await sleep(900);
       await page.evaluate(() => { window.slip = true; });
       await press(page, 'ArrowUp'); await sleep(300);
@@ -950,6 +957,160 @@ const press = async (page, ...keys) => { for (const k of keys) await page.keyboa
       await pg.context().close();
     }
 
+    console.log('Counts by key: a tap during a glide, back to zero, keys on the button\'s row, the last card, leaving the list');
+    {
+      const ringList = (pg) => pg.evaluate(() => { const root = window.__speedyPagesTest.root; if (root.querySelector('.layer').hidden) return null;
+        const el = root.querySelector('.ring'); const r = el.getBoundingClientRect(); const badge = root.querySelector('.badge'); const hint = root.querySelector('.hint');
+        const on = [...document.querySelectorAll('[data-item-id]')].findIndex((c) => { const b = c.getBoundingClientRect(); return Math.abs(b.left - 6 - r.left) < 3 && Math.abs(b.top - 6 - r.top) < 3 && Math.abs(b.width + 12 - r.width) < 3; });
+        return { on, open: el.getAttribute('data-kind') === 'open', badge: badge.hidden ? null : badge.textContent, hint: hint && !hint.hidden ? hint.textContent : null }; });
+      const pz = await open(browser, 'https://www.walmart.com/my-items', { pages: 8 });
+      const cartZ = () => pz.evaluate(() => JSON.stringify(window.cart));
+      await press(pz, 'ArrowDown'); await sleep(600);
+      const tw = await pz.evaluate(async () => {
+        const ringEl = window.__speedyPagesTest.root.querySelector('.ring');
+        const x = () => ringEl.getBoundingClientRect().left;
+        const key = (k) => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+        const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+        const frame = () => new Promise((done) => requestAnimationFrame(done));
+        key('ArrowDown'); await wait(150);
+        const x0 = x(); const t0 = performance.now();
+        key('ArrowRight'); await frame(); await frame();
+        const xa = x(); const dt = performance.now() - t0;
+        await wait(800);
+        const x1 = x(); const p = Math.min(1, dt / 130);
+        return { x0, xa, x1, dt, y: window.scrollY, frac: (xa - x0) / (x1 - x0), bound: 1 - Math.pow(1 - p, 3) + 0.1 };
+      });
+      ok('a Right that lands while the page is still gliding starts its own short move: the ring never jumps most of the way in one frame', tw.y > 0 && tw.x1 > tw.x0 + 50 && tw.frac <= tw.bound, tw);
+      await press(pz, 'Enter'); await sleep(700);
+      await press(pz, 'ArrowDown'); await sleep(60);
+      let z = await ringList(pz);
+      ok('Down to zero: the count closes by itself, and the key beside Add is Enter again', z && z.on === 5 && !z.open && z.hint === '↵', z);
+      await press(pz, 'ArrowDown'); await sleep(200);
+      z = await ringList(pz);
+      ok('one Down too many, straight after: the ring stays on the card', z && z.on === 5 && (await cartZ()) === '{}', [z, await cartZ()]);
+      await sleep(600);
+      await press(pz, 'Enter'); await sleep(40);
+      z = await ringList(pz);
+      ok('then one Enter adds it again, and the count asked for shows at once', z && z.on === 5 && z.open && z.hint === '1↓↑', z);
+      await sleep(700);
+      ok('the store has one', (await cartZ()) === '{"i5":1}', await cartZ());
+      await press(pz, 'ArrowDown'); await sleep(40);
+      await press(pz, 'ArrowUp'); await sleep(800);
+      z = await ringList(pz);
+      ok('Down to zero and Up straight back: one again, the count still open, the ring where it was', z && z.on === 5 && z.open && (await cartZ()) === '{"i5":1}', [z, await cartZ()]);
+      await pz.evaluate(() => { document.querySelectorAll('[data-item-id]')[5].style.width = '100px'; });
+      await press(pz, 'ArrowUp'); await sleep(800);
+      const rowKeys = await pz.evaluate(() => { const card = document.querySelectorAll('[data-item-id]')[5]; const st = card.querySelector('[data-testid="quantity-stepper"]');
+        const h = [...window.__speedyPagesTest.root.querySelectorAll('.layer .hint')].find((n) => !n.hidden && n.textContent === '↓↑');
+        if (!st || !h) return null;
+        const a = st.getBoundingClientRect(), b = h.getBoundingClientRect(), c = card.getBoundingClientRect();
+        return { beside: b.left >= a.right, onRow: (b.top + b.bottom) / 2 > a.top && (b.top + b.bottom) / 2 < a.bottom, inside: b.right <= c.right, h: Math.round(b.height), room: Math.round(c.right - a.right) }; });
+      ok('in a narrow card the Down and Up keys shrink to stay on the stepper\'s row, never above it', rowKeys && rowKeys.beside && rowKeys.onRow && rowKeys.inside && rowKeys.h >= 12, rowKeys);
+      await pz.context().close();
+
+      const pt = await open(browser, 'https://www.walmart.com/my-items', { pages: 8 });
+      await press(pt, 'ArrowDown'); await sleep(500);
+      await pt.evaluate(() => { for (let i = 0; i < 28; i++) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })); });
+      const hammered = Date.now();
+      let landed = 0;
+      for (let i = 0; i < 30 && !landed; i++) { await sleep(50); z = await ringList(pt); if (z && z.on === 19) landed = Date.now() - hammered; }
+      ok('Tab hammered past the last card: the ring comes to rest on it and the page does not turn', landed > 0 && (await ui(pt)).cur === 1, [z, landed, (await ui(pt)).cur]);
+      await sleep(700);
+      await press(pt, 'Tab', 'Tab', 'Tab'); await sleep(900);
+      ok('after a rest on the last card, Tab turns the page, and more Tabs straight after turn no further', (await ui(pt)).cur === 2, (await ui(pt)).cur);
+      await sleep(600);
+      const before = await ringList(pt);
+      await pt.evaluate(() => window.leave()); await sleep(900);
+      ok('going to the cart without a page load drops the ring that was on the list', before !== null && (await ringList(pt)) === null, [before, await ringList(pt)]);
+      await pt.context().close();
+    }
+
+    console.log('The cart: keys beside buttons, keys that travel with the ring, Delete and Backspace, rows of suggestions');
+    {
+      const pc = await open(browser, 'https://www.walmart.com/cart', { cart: 'more' });
+      await pc.evaluate(() => { window.slowRow = 600; });
+      const ringAt = () => pc.evaluate(() => { const root = window.__speedyPagesTest.root; if (root.querySelector('.layer').hidden) return null;
+        const el = root.querySelector('.ring'); const r = el.getBoundingClientRect(); const veil = root.querySelector('.veil');
+        const hit = [...document.querySelectorAll('button, li, [data-item-id]')].reverse().find((c) => { const b = c.getBoundingClientRect(); return b.width && Math.abs(b.left - 6 - r.left) < 3 && Math.abs(b.top - 6 - r.top) < 3 && Math.abs(b.width + 12 - r.width) < 3; });
+        return { on: hit ? hit.dataset.n || hit.getAttribute('data-item-id') || hit.getAttribute('data-automation-id') : null, kind: el.getAttribute('data-kind'), veil: veil.hidden ? null : veil.textContent,
+          hints: [...root.querySelectorAll('.hint')].filter((h) => !h.hidden && h.getClientRects().length).map((h) => h.textContent).sort().join(' ') }; });
+      const logOf = () => pc.evaluate(() => JSON.parse(sessionStorage.getItem('wm.log') || '[]').join(' '));
+      const chipBox = (text) => pc.evaluate((want) => { const h = [...window.__speedyPagesTest.root.querySelectorAll('.hint')].find((n) => !n.hidden && n.getClientRects().length && n.textContent === want);
+        if (!h) return null; const b = h.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom }; }, text);
+      let r = await ringAt();
+      ok('the first free delivery time is found when the store runs its words together ("5pmFree with")', r && r.on === 'cart-slot-shortcut-slot-2', r);
+      const go = await pc.evaluate(() => { const b = document.getElementById('go').getBoundingClientRect(); return { right: b.right, mid: b.top + b.height / 2 }; });
+      const cKey = await chipBox('c');
+      ok('the c key sits beside Continue to checkout, on its right, centred on the button', cKey && cKey.left >= go.right + 4 && Math.abs((cKey.top + cKey.bottom) / 2 - go.mid) <= 2, [cKey, go]);
+      const sKey = await chipBox('s');
+      const under = sKey ? await pc.evaluate(([x, y]) => { const n = document.elementFromPoint(x, y); return n ? n.id : null; }, [sKey.left + 4, sKey.top + 3]) : null;
+      if (sKey) await pc.mouse.click(sKey.left + 4, sKey.top + 3);
+      await sleep(100);
+      ok('a key drawn over the search box lets the mouse through: one click there lands in the box', under === 'box' && (await pc.evaluate(() => document.activeElement && document.activeElement.id)) === 'box', [sKey, under]);
+      await pc.evaluate(() => document.activeElement.blur());
+      await press(pc, 'ArrowDown'); await sleep(700);
+      r = await ringAt();
+      ok('Down: the first item, with delete over Remove, backspace over Save for later, and R and L over those', r && r.on === 'Bread' && r.hints === '- = L R backspace c delete s', r);
+      const stack = await pc.evaluate(() => { const root = window.__speedyPagesTest.root;
+        const box = (want) => { const h = [...root.querySelectorAll('.hint')].find((n) => !n.hidden && n.textContent === want); return h ? h.getBoundingClientRect() : null; };
+        const rm = document.querySelector('li[data-n="Bread"] button[aria-label^="Remove "]').getBoundingClientRect(); const d = box('delete'); const R = box('R');
+        const k = [...root.querySelectorAll('.hint .k')].find((n) => n.textContent === 'R' && n.getClientRects().length);
+        return d && R && k ? { overButton: d.bottom <= rm.top && rm.top - d.bottom < 12, rAbove: R.bottom <= d.top && d.top - R.bottom < 8, centred: Math.abs((d.left + d.right) / 2 - (rm.left + rm.right) / 2) < 2,
+          glyph: parseFloat(getComputedStyle(k).fontSize) / k.getBoundingClientRect().height } : null; });
+      ok('delete sits just above Remove, and R just above delete', stack && stack.overButton && stack.rAbove && stack.centred, stack);
+      ok('a one-letter key fills its cap: the letter is about two thirds of the cap\'s height', stack && stack.glyph > 0.6 && stack.glyph < 0.72, stack);
+      const trip = await pc.evaluate(async () => {
+        const root = window.__speedyPagesTest.root; const ringEl = root.querySelector('.ring');
+        const off = () => { const h = [...root.querySelectorAll('.layer .hint')].find((n) => !n.hidden && n.textContent === '-'); const a = ringEl.getBoundingClientRect(); const b = h.getBoundingClientRect();
+          return { dx: b.left - a.left, dy: b.top - a.top, top: a.top + window.scrollY }; };
+        const frame = () => new Promise((done) => requestAnimationFrame(done));
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+        await frame(); await frame(); await frame();
+        const mid = off();
+        await new Promise((done) => setTimeout(done, 900));
+        return { mid, end: off() };
+      });
+      ok('Down to the next item: the keys travel with the ring, never ahead of it', Math.abs(trip.mid.dx - trip.end.dx) <= 3 && Math.abs(trip.mid.dy - trip.end.dy) <= 3 && trip.end.top - trip.mid.top > 15, trip);
+      await press(pc, 'Delete'); await sleep(60);
+      r = await ringAt();
+      ok('Delete presses Remove, and the row shows the key and the button\'s name at once, before the store answers', (await logOf()) === 'remove:Milk' && r && r.on === 'Milk' && r.veil === 'deleteRemove', [await logOf(), r]);
+      await sleep(900);
+      r = await ringAt();
+      ok('once the store takes the row away, the ring is on the next item and that sign is gone', r && r.on === 'Eggs' && r.veil === null, r);
+      await press(pc, 'Backspace'); await sleep(60);
+      r = await ringAt();
+      ok('Backspace presses Save for later, with the same sign', (await logOf()) === 'remove:Milk save:Eggs' && r && r.veil === 'backspaceSave for later', [await logOf(), r]);
+      await press(pc, 'Backspace', 'l', 'Delete', 'r'); await sleep(900);
+      r = await ringAt();
+      ok('more presses while the store still works on that row press nothing; then the ring goes to the item that is left, not to a suggestion', (await logOf()) === 'remove:Milk save:Eggs' && r && r.on === 'Bread' && r.veil === null, [await logOf(), r]);
+      await pc.evaluate(() => { window.__speedyPagesTest.mac = true; }); await sleep(550);
+      r = await ringAt();
+      ok('on a Mac the same keys read fn delete over Remove and delete over Save for later', r && r.hints === '- = L R delete fndelete s', r);
+      await pc.evaluate(() => { window.__speedyPagesTest.mac = false; }); await sleep(550);
+      await press(pc, 'ArrowDown'); await sleep(900);
+      r = await ringAt();
+      ok('Down from the last item: a suggestion under it, with Enter beside its Add', r && r.on === 'c2' && r.hints === 's ↵', r);
+      await press(pc, 'ArrowRight', 'ArrowRight', 'ArrowRight'); await sleep(1000);
+      r = await ringAt();
+      const inView = await pc.evaluate(() => { const c = document.querySelector('[data-item-id="c5"]').getBoundingClientRect(); const u = document.getElementById('car').getBoundingClientRect(); return c.left >= u.left - 1 && c.right <= u.right + 1; });
+      ok('Right along the row to a suggestion past its edge: the row slides it into view with the ring on it', r && r.on === 'c5' && inView, [r, inView]);
+      await press(pc, 'Enter'); await sleep(400);
+      const qty = await pc.evaluate(() => { const l = document.querySelector('[data-item-id="c5"] [data-testid="quantity-label"]'); return l ? l.textContent : null; });
+      ok('Enter adds the suggestion', (await logOf()).endsWith(' add:c5') && qty === '1', [await logOf(), qty]);
+      await press(pc, 'r', 'l', 'Delete', 'Backspace'); await sleep(200);
+      ok('R, L, Delete and Backspace on a suggestion press nothing (its heart reads "Remove from Favorites")', (await logOf()).endsWith(' add:c5'), await logOf());
+      await press(pc, 'Escape', 'ArrowRight', 'ArrowLeft'); await sleep(500);
+      r = await ringAt();
+      ok('with its stepper showing, the suggestion is still one card: Right and Left come back to it', r && r.on === 'c5', r);
+      await press(pc, 'ArrowUp'); await sleep(900);
+      r = await ringAt();
+      const sv = await pc.evaluate(() => { const b = document.querySelector('li[data-n="Bread"] button[aria-label^="Save for later"]').getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2]; });
+      await pc.mouse.click(sv[0], sv[1]); await sleep(200);
+      const saves = (await logOf()).split(' ').filter((s) => s === 'save:Bread').length;
+      ok('Up goes back to the item; one mouse click on its Save for later is one press, with the ring and its keys drawn around it', r && r.on === 'Bread' && saves === 1, [r, await logOf()]);
+      await pc.context().close();
+    }
+
     console.log('The cart and checkout: delivery times, items, the pop-up, Place order');
     {
       const ringOf = (pg) => pg.evaluate(() => { const root = window.__speedyPagesTest.root; const layer = root.querySelector('.layer'); if (layer.hidden) return null;
@@ -971,12 +1132,12 @@ const press = async (page, ...keys) => { for (const k of keys) await page.keyboa
       ok('= on a delivery time changes nothing', (await logOf(page)) === '', await logOf(page));
       await press(page, 'ArrowDown'); await sleep(700);
       r = await ringOf(page);
-      ok('Down: the first item, with a key over each of its buttons', r.on === 'Bread' && r.hints === '- = L R c s', r);
+      ok('Down: the first item, with a key over each of its buttons', r.on === 'Bread' && r.hints === '- = L R backspace c delete s', r);
       await press(page, '='); await sleep(300);
-      ok('= adds one', (await count(page, 'Bread')) === 2 && (await ringOf(page)).badge === '2', [await count(page, 'Bread'), await ringOf(page)]);
+      ok('= adds one', (await count(page, 'Bread')) === 2 && (await ringOf(page)).badge === null, [await count(page, 'Bread'), await ringOf(page)]);
       await press(page, 'Enter'); await sleep(300);
       r = await ringOf(page);
-      ok('Enter: one more, and the count opens (solid ring, Down and Up over the buttons)', (await count(page, 'Bread')) === 3 && r.kind === 'open' && r.border === 'solid' && r.hints === 'L R c s ↑ ↓', [await count(page, 'Bread'), r]);
+      ok('Enter: one more, and the count opens (solid ring, Down and Up over the buttons)', (await count(page, 'Bread')) === 3 && r.kind === 'open' && r.border === 'solid' && r.hints === 'L R backspace c delete s ↑ ↓', [await count(page, 'Bread'), r]);
       await press(page, 'ArrowDown'); await sleep(300);
       ok('Down while open: one fewer', (await count(page, 'Bread')) === 2, await count(page, 'Bread'));
       await press(page, 'Escape', 'ArrowDown'); await sleep(700);
@@ -1168,20 +1329,20 @@ const press = async (page, ...keys) => { for (const k of keys) await page.keyboa
       ok('Right: moves cleanly to a second card sharing the same ASIN', r && r.on === 's:1', r);
       await press(page, 'Enter'); await sleep(130);
       r = await amzRing(page);
-      ok('Enter: solid open ring, and badge stays dashed while data-is-request-in-progress is true',
-        r && r.on === 's:1' && r.kind === 'open' && r.border === 'solid' && r.badge === '1' && r.waiting, r);
+      ok('Enter: solid open ring, with no corner count while the count changes',
+        r && r.on === 's:1' && r.kind === 'open' && r.border === 'solid' && r.badge === null, r);
       await sleep(350);
       r = await amzRing(page);
       const ewcUp = await page.evaluate(() => !document.getElementById('nav-flyout-ewc').classList.contains('aok-hidden') && !!document.getElementById('inline-expansion-slot'));
-      ok('once save-in-flight clears, the badge turns solid and #nav-flyout-ewc (role=dialog) does not silence keys',
-        ewcUp && r && r.badge === '1' && !r.waiting && r.hints === 'c s ↓↑', [ewcUp, r]);
+      ok('once save-in-flight clears, #nav-flyout-ewc (role=dialog) does not silence keys',
+        ewcUp && r && r.badge === null && r.hints === 'c s ↓↑', [ewcUp, r]);
 
       await press(page, '9'); await sleep(950);
       r = await amzRing(page);
       const logs1 = await amzLog(page);
       const modalGone = await page.evaluate(() => !document.querySelector('[aria-label="Maximum Quantity Reached"]'));
       ok('typing 9 on a max-5 card reads data-steppervalue (never the stale text), stops at 5, and closes the Maximum Quantity Reached dialog',
-        (await amzCart(page)) === '{"1":5}' && r && r.badge === '5' && !r.waiting && logs1.includes('max-opened') && logs1.includes('max-closed') && modalGone, [await amzCart(page), r, logs1, modalGone]);
+        (await amzCart(page)) === '{"1":5}' && r && logs1.includes('max-opened') && logs1.includes('max-closed') && modalGone, [await amzCart(page), r, logs1, modalGone]);
 
       await press(page, '2'); await sleep(850);
       ok('typing 2 steps down to 2 despite stale live-region and value text', (await amzCart(page)) === '{"1":2}', await amzCart(page));
@@ -1261,18 +1422,18 @@ const press = async (page, ...keys) => { for (const k of keys) await page.keyboa
       ok('Amazon cart: no ring until Down or Tab', (await amzRing(page)) === null);
       await press(page, 'ArrowDown'); await sleep(550);
       r = await amzRing(page);
-      ok('Down rings the first active item with -, =, L, R, c and s hints',
-        r && r.on === 'item-1' && r.hints === '- = L R c s', r);
-      await press(page, '='); await sleep(80);
+      ok('Down rings the first active item with -, =, L, R, delete, backspace, c and s hints',
+        r && r.on === 'item-1' && r.hints === '- = L R backspace c delete s', r);
+      await press(page, '='); await sleep(400);
       r = await amzRing(page);
-      ok('while the cart stepper spinner is visible, the badge stays dashed (waiting)',
-        r && r.badge === '2' && r.waiting, r);
-      await sleep(320);
+      ok('= on a cart item: no corner count while the count changes', r && r.on === 'item-1' && r.badge === null, r);
+      await press(page, 'ArrowDown'); await sleep(550);
+      await press(page, 'ArrowUp'); await sleep(550);
       r = await amzRing(page);
-      ok('once the cart spinner hides, the badge turns solid at 2', r && r.badge === '2' && !r.waiting, r);
+      ok('back on the item after leaving it: the corner count says 2', r && r.on === 'item-1' && r.badge === '2' && !r.waiting, r);
       await press(page, 'Enter'); await sleep(350);
       r = await amzRing(page);
-      ok('Enter opens the cart item count (3, solid ring, arrows over stepper)', r && r.kind === 'open' && r.badge === '3' && r.hints === 'L R c s ↑ ↓', r);
+      ok('Enter opens the cart item count (solid ring, arrows over stepper)', r && r.kind === 'open' && r.badge === null && r.hints === 'L R backspace c delete s ↑ ↓', r);
       await press(page, 'ArrowDown', 'Escape'); await sleep(400);
       await press(page, 'ArrowDown'); await sleep(550);
       ok('Down moves to the second active item', (await amzRing(page)).on === 'item-2', await amzRing(page));

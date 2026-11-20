@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Speedy Pages",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Shop Walmart and Amazon from the keyboard: move a ring from item to item, add, set counts, check out, and turn pages.",
   "content_scripts": [
     {

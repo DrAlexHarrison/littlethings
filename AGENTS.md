@@ -14,8 +14,8 @@ Chrome, Edge, Brave, Vivaldi, Opera:
 Firefox 140 or newer: Quiet Ads installs from its Firefox Add-ons page (Add to Firefox; Firefox updates it). For the others, open the signed file, then Continue to Installation, then Add.
 
 - Quiet Ads: https://addons.mozilla.org/firefox/addon/quiet-ads/
-- Thrifty Sort: https://github.com/DrAlexHarrison/littlethings/releases/download/thrifty-sort-v1.8.0/thrifty-sort-1.8.0.xpi
-- Speedy Pages: https://github.com/DrAlexHarrison/littlethings/releases/download/speedy-pages-v1.0.0/speedy-pages-1.0.0.xpi
+- Thrifty Sort: https://github.com/DrAlexHarrison/littlethings/releases/download/thrifty-sort-v1.8.1/thrifty-sort-1.8.1.xpi
+- Speedy Pages: https://github.com/DrAlexHarrison/littlethings/releases/download/speedy-pages-v1.0.1/speedy-pages-1.0.1.xpi
 
 Thrifty Sort and Speedy Pages are also userscripts (Tampermonkey, Violentmonkey): `<tool>/extension/<tool>.user.js`. Install one way only.
 

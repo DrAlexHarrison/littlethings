@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Speedy Pages
 // @namespace    https://github.com/DrAlexHarrison/littlethings
-// @version      1.0.0
+// @version      1.0.1
 // @description  Shop Walmart and Amazon from the keyboard: move a ring from item to item, add, set counts, check out, and turn pages.
 // @match        https://www.walmart.com/*
 // @match        https://www.amazon.com/*
@@ -14,7 +14,7 @@
 (() => {
   'use strict';
 
-  const VERSION = '1.0.0';
+  const VERSION = '1.0.1';
 
   const TYPE_MS = 400;
   const PENDING_MS = 8000;
@@ -28,10 +28,13 @@
   const COUNT_WAIT_MS = 1500;
   const MAX_COUNT = 99;
   const ADD_WAIT_MS = 6000;
-  const PRESS_GAP_MS = 120;
+  const PRESS_GAP_MS = 80;
   const PICK_HOLD_MS = 1000;
   const SETTLE_MS = 4500;
   const SPEND_WAIT_MS = 1000;
+  const TURN_REST_MS = 600;
+  const ZERO_REST_MS = 500;
+  const ACT_MS = 3000;
 
   function digitStep(typed, last) {
     if (!last) return 'wait';
@@ -144,6 +147,33 @@
 
   const host = (name) => new RegExp('(^|\\.)' + name.replace('.', '\\.') + '$').test(location.hostname);
   const visible = (n) => !!n && n.getClientRects().length > 0 && getComputedStyle(n).visibility !== 'hidden';
+  const MAC = /mac|iphone|ipad/i.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '');
+  const onMac = () => (window.__speedyPagesTest && 'mac' in window.__speedyPagesTest ? !!window.__speedyPagesTest.mac : MAC);
+  const wordKeys = (act) => (act === 'r' ? (onMac() ? ['fn', 'delete'] : ['delete']) : act === 'l' ? (onMac() ? ['delete'] : ['backspace']) : null);
+  const cardKeys = new WeakMap();
+  function cardKey(el) {
+    let k = cardKeys.get(el);
+    if (!k) {
+      const id = el.getAttribute('data-item-id');
+      const at = [...document.querySelectorAll('[data-item-id]')].filter((n) => n.getAttribute('data-item-id') === id).indexOf(el);
+      k = 'card:' + id + (at > 0 ? ':' + at : '');
+      cardKeys.set(el, k);
+    }
+    return k;
+  }
+  function reveal(el) {
+    for (let n = el.parentElement, i = 0; n && n !== document.body && i < 8; n = n.parentElement, i++) {
+      if (n.scrollWidth <= n.clientWidth + 8) continue;
+      const over = getComputedStyle(n).overflowX;
+      if (over !== 'auto' && over !== 'scroll') continue;
+      const box = n.getBoundingClientRect();
+      const r = el.getBoundingClientRect();
+      const by = r.left < box.left + 8 ? r.left - box.left - 8 : r.right > box.right - 8 ? r.right - box.right + 8 : 0;
+      const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (Math.abs(by) > 1) n.scrollTo({ left: n.scrollLeft + by, behavior: calm ? 'instant' : 'smooth' });
+      return;
+    }
+  }
 
   const walmart = {
     tint: ['#0053e2', '#ffc220'],
@@ -411,7 +441,7 @@
     {
       name: 'Walmart cart',
       scene: true,
-      tiles: 'button[data-automation-id^="cart-slot-shortcut-slot-"], li:has([data-testid="quantity-stepper"]):has(button[aria-label^="Remove "])',
+      tiles: 'button[data-automation-id^="cart-slot-shortcut-slot-"], li:has([data-testid="quantity-stepper"]):has(button[aria-label^="Remove "]:not([data-automation-id="heart-item"])), [data-item-id]:has(button[data-automation-id="add-to-cart"], [data-testid="quantity-stepper"], button[data-testid="quantity-in-cart"]):not([data-testid="sfl-grid"] *)',
       test: () => host('walmart.com') && location.pathname === '/cart',
       bar: () => null,
       current: () => 1,
@@ -429,23 +459,24 @@
         quiet: walmart.quiet,
         key(el) {
           if (el.tagName === 'BUTTON') return el.getAttribute('data-automation-id');
+          if (el.hasAttribute('data-item-id')) return cardKey(el);
           const a = el.querySelector('a[href*="/ip/"]');
           const m = a && /\/ip\/(?:[^/]+\/)?(\d+)/.exec(a.getAttribute('href'));
           return m ? m[1] : (el.querySelector('button[aria-label^="Remove "]') || el).getAttribute('aria-label');
         },
         kind: (el) => (el.tagName === 'BUTTON' ? 'pick' : 'item'),
-        main: (el) => el.querySelector('[data-testid="quantity-stepper"]'),
-        parts: (el) => ({
+        main: walmart.main,
+        parts: (el) => (el.hasAttribute('data-item-id') ? null : {
           less: el.querySelector('[data-testid="quantity-stepper-dec-button"]'),
           more: el.querySelector('[data-testid="quantity-stepper-inc-button"]'),
-          keys: { r: el.querySelector('button[aria-label^="Remove "]'), l: el.querySelector('button[aria-label^="Save for later"]') },
+          keys: { r: el.querySelector('button[aria-label^="Remove "]:not([data-automation-id="heart-item"])'), l: el.querySelector('button[aria-label^="Save for later"]') },
         }),
-        start: () => [...document.querySelectorAll('button[data-automation-id^="cart-slot-shortcut-slot-"]')].find((b) => /\bfree\b/i.test(b.textContent) && b.getClientRects().length) || null,
+        start: () => [...document.querySelectorAll('button[data-automation-id^="cart-slot-shortcut-slot-"]')].find((b) => /free(?![a-z])/i.test(b.textContent) && b.getClientRects().length) || null,
         go: () => [...document.querySelectorAll('button')].find((b) => /^continue to checkout$/i.test(b.textContent.trim()) && b.getClientRects().length) || null,
         undo: () => [...document.querySelectorAll('button')].find((b) => /^undo$/i.test(b.textContent.trim()) && b.getClientRects().length) || null,
         marks() {
           const go = this.go();
-          return [go && { el: go, keys: ['c'] }, walmart.mark('s')].filter(Boolean);
+          return [go && { el: go, keys: ['c'], side: true }, walmart.mark('s')].filter(Boolean);
         },
       },
     },
@@ -621,7 +652,7 @@
         },
         marks() {
           const go = this.go();
-          return [go && { el: go.closest('.a-button') || go, keys: ['c'] }, amazon.mark('s')].filter(Boolean);
+          return [go && { el: go.closest('.a-button') || go, keys: ['c'], side: true }, amazon.mark('s')].filter(Boolean);
         },
       },
     },
@@ -663,7 +694,7 @@
         },
         marks() {
           const go = this.go();
-          return [go && { el: go.closest('.a-button') || go, keys: ['c'] }, amazon.mark('s')].filter(Boolean);
+          return [go && { el: go.closest('.a-button') || go, keys: ['c'], side: true }, amazon.mark('s')].filter(Boolean);
         },
       },
     },
@@ -834,7 +865,15 @@
     return null;
   }
 
+  let pinSeen = { at: -1e9, y: -1, v: 0 };
   function pinnedNow() {
+    const now = performance.now();
+    const y = Math.round(window.scrollY);
+    if (now - pinSeen.at < 600 && Math.abs(y - pinSeen.y) < 2) return pinSeen.v;
+    pinSeen = { at: now, y, v: pinnedRead() };
+    return pinSeen.v;
+  }
+  function pinnedRead() {
     const limit = window.innerHeight * 0.4;
     let bottom = 0;
     for (const x of [window.innerWidth * 0.25, window.innerWidth * 0.5, window.innerWidth * 0.75]) {
@@ -853,7 +892,8 @@
     }
     return Math.round(bottom);
   }
-  const hostFor = () => document.querySelector('[data-speedy-pages]');
+  let hostNode = null;
+  const hostFor = () => (hostNode && hostNode.isConnected ? hostNode : (hostNode = document.querySelector('[data-speedy-pages]')));
 
   const jump = (y) => window.scrollTo({ left: window.scrollX, top: y, behavior: 'instant' });
   const easeOut = (p) => 1 - Math.pow(1 - p, 3);
@@ -956,7 +996,7 @@
   let quietSeen = { at: -1000, v: false };
   function quietNow(fresh) {
     const now = performance.now();
-    if (fresh || now - quietSeen.at > 150) {
+    if (fresh || now - quietSeen.at > 300) {
       const sh = shop();
       quietSeen = { at: now, v: !!(sh && !modalNow() && sh.quiet && sh.quiet()) };
     }
@@ -976,6 +1016,28 @@
       }
     }
     return out;
+  }
+  let blockedSeen = { at: -1000, v: false };
+  function blockedSoon(fresh) {
+    const now = performance.now();
+    if (fresh || now - blockedSeen.at > 300) {
+      const sh = shop();
+      blockedSeen = { at: now, v: !!(sh && sh.blocked && sh.blocked()) };
+    }
+    return blockedSeen.v;
+  }
+  let hotUntil = 0;
+  let shapeSeen = { at: -1000, v: null };
+  function stir(keep) {
+    if (!keep) shapeSeen.at = -1000;
+    hotUntil = performance.now() + 500;
+    ui.wake();
+  }
+  let tilesSeen = { at: -1000, place: null, list: [] };
+  function tilesSoon() {
+    const now = performance.now();
+    if (now - tilesSeen.at > 80 || tilesSeen.place !== place) tilesSeen = { at: now, place, list: tilesNow() };
+    return tilesSeen.list;
   }
   const keyOf = (el) => (modalNow() ? 'choice:' + (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60) : place.shop.key(el));
   const kindOf = (el) => (modalNow() ? 'pick' : place.shop.kind ? place.shop.kind(el) : 'item');
@@ -998,7 +1060,8 @@
 
   function pump(key) {
     if (pumps.has(key)) return;
-    const st = { seen: null, at: 0, wait: COUNT_WAIT_MS, stalls: 0, opens: 0, held: 0 };
+    const st = { seen: null, at: 0, wait: COUNT_WAIT_MS, stalls: 0, opens: 0, held: 0, timer: 0, poke: null };
+    const later = (ms) => { clearTimeout(st.timer); st.timer = setTimeout(tick, ms); };
     pumps.set(key, st);
     const stop = (gaveUp) => {
       pumps.delete(key);
@@ -1009,8 +1072,8 @@
       const el = shop() ? cardByKey(key) : null;
       const target = want.get(key);
       if (!el || target == null) return stop(false);
-      if ((place.shop.blocked && place.shop.blocked()) || (place.shop.failed && place.shop.failed(el))) return stop(true);
-      if (quietNow()) return void setTimeout(tick, 200);
+      if (blockedSoon() || (place.shop.failed && place.shop.failed(el))) return stop(true);
+      if (quietNow()) return void later(200);
       const cur = place.shop.count(el);
       const saving = !!(place.shop.saving && place.shop.saving(el));
       const now = Date.now();
@@ -1019,31 +1082,33 @@
         st.stalls = 0;
         if (saving && now - st.at < ADD_WAIT_MS) {
           st.held = 0;
-          return void setTimeout(tick, 100);
+          return void later(100);
         }
         if (!st.held) st.held = now;
         if (now - Math.max(st.at, st.held) > SETTLE_MS) return stop(false);
-        return void setTimeout(tick, 150);
+        return void later(150);
       }
       st.held = 0;
       if (st.seen === cur) {
         const wait = saving ? Math.max(st.wait, ADD_WAIT_MS) : st.wait;
-        if (now - st.at < wait) return void setTimeout(tick, 50);
+        if (now - st.at < wait) return void later(16);
         if (++st.stalls >= 2) return stop(true);
       } else st.stalls = 0;
-      if (now - st.at < PRESS_GAP_MS) return void setTimeout(tick, PRESS_GAP_MS - (now - st.at));
+      if (now - st.at < PRESS_GAP_MS) return void later(PRESS_GAP_MS - (now - st.at));
       const did = place.shop.press(el, cur < target ? 1 : -1);
       if (did === 'open') {
         if (++st.opens > 8) return stop(true);
-        return void setTimeout(tick, 120);
+        return void later(40);
       }
       if (!did || did === 'max') return stop(true);
       st.seen = cur;
       st.at = now;
+      stir();
       for (const ms of [80, 300]) setTimeout(() => unfocus(key), ms);
       st.wait = did === 'add' ? ADD_WAIT_MS : COUNT_WAIT_MS;
-      setTimeout(tick, 50);
+      later(16);
     };
+    st.poke = () => { clearTimeout(st.timer); tick(); };
     tick();
   }
 
@@ -1071,27 +1136,45 @@
       }
     }
     want.set(key, n);
+    stir();
+    if (ring && ring.key === key) {
+      ring.touched = true;
+      if (n === 0 && ring.open) {
+        ring.open = false;
+        ring.zeroAt = Date.now();
+      }
+    }
+    const going = pumps.get(key);
+    if (going && going.poke) going.poke();
     pump(key);
     return true;
   }
 
   function ringOn(el) {
     const key = keyOf(el);
-    if (!ring) ring = { key, el, open: false, x: null, turning: null, since: Date.now(), pos: null, back: null };
+    const fresh = !ring || ring.el !== el;
+    if (!ring) ring = { key, el, open: false, x: null, turning: null, since: Date.now(), pos: null, back: null, touched: false, acting: null, zeroAt: 0 };
     if (ring.key !== key) {
       run = null;
       ring.open = false;
       ring.digits = '';
       ring.since = Date.now();
+      ring.touched = false;
+      ring.acting = null;
+      ring.zeroAt = 0;
     }
     ring.key = key;
     ring.el = el;
+    ring.tag = el.tagName;
+    tilesSeen.at = -1000;
+    if (fresh) reveal(el);
     ui.ring(true);
+    stir();
   }
   function ringOff() {
     ring = null;
     run = null;
-    ui.ring(false);
+    stir();
   }
 
   function follow(rows, i) {
@@ -1155,10 +1238,12 @@
     if (dir === 'right' || dir === 'next') {
       if (ci + 1 < rows[ri].tiles.length) to = rows[ri].tiles[ci + 1];
       else if (ri + 1 < rows.length) to = rows[row = ri + 1].tiles[0];
+      else if (Date.now() - ring.since < TURN_REST_MS) return ui.ringBump('right'), true;
       else return ringTurn(1);
     } else if (dir === 'left' || dir === 'prev') {
       if (ci > 0) to = rows[ri].tiles[ci - 1];
       else if (ri > 0) to = rows[row = ri - 1].tiles[rows[ri - 1].tiles.length - 1];
+      else if (Date.now() - ring.since < TURN_REST_MS) return ui.ringBump('left'), true;
       else return ringTurn(-1);
     } else {
       row = ri + (dir === 'down' ? 1 : -1);
@@ -1197,6 +1282,7 @@
       return true;
     }
     ui.keys([dir > 0 ? '→' : '←'], false, dir > 0 ? 'next' : 'prev');
+    ring.since = Date.now();
     ring.turning = dir > 0 ? 'first' : 'last';
     try { sessionStorage.setItem('speedyPages.ring', JSON.stringify({ which: ring.turning, page: from(), path: location.pathname, t: Date.now() })); } catch (_) { }
     return true;
@@ -1254,10 +1340,10 @@
   function ringKey(e) {
     const k = e.key;
     const sh = place.shop;
-    if (sh.blocked && sh.blocked()) return false;
+    if (blockedSoon()) return false;
     if (typed && (k === 'Enter' || k === 'Escape' || k === 'Backspace')) return false;
     const box = modalNow();
-    if (quietNow(true)) return false;
+    if (quietNow()) return false;
     if (!e.shiftKey && !e.repeat && !box && (k === 's' || k === '/')) return toSearch();
     if (!e.shiftKey && !e.repeat && k === 'c') return toGo(box);
     if (!ring) {
@@ -1267,6 +1353,16 @@
     const el = cardByKey(ring.key);
     const kind = el ? kindOf(el) : 'item';
     const arrow = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }[k];
+    if (!ring.open && ring.zeroAt && Date.now() - ring.zeroAt < ZERO_REST_MS && (k === 'ArrowUp' || k === 'ArrowDown') && !e.shiftKey) {
+      if (k === 'ArrowUp') {
+        ring.zeroAt = 0;
+        ring.open = true;
+        return e.repeat || change(1);
+      }
+      ring.zeroAt = Date.now();
+      ui.ringBump('down');
+      return true;
+    }
     if (ring.open) {
       if (k === 'ArrowUp' || k === 'ArrowDown') return e.repeat || change(k === 'ArrowUp' ? 1 : -1);
       if (/^[0-9]$/.test(k)) {
@@ -1329,10 +1425,14 @@
       ringOff();
       return true;
     }
-    if (!e.shiftKey && !e.repeat && el && kind === 'item' && sh.parts && /^[a-z]$/i.test(k)) {
-      const b = (sh.parts(el).keys || {})[k.toLowerCase()];
+    const act = k === 'Delete' ? 'r' : k === 'Backspace' ? 'l' : /^[a-z]$/i.test(k) ? k.toLowerCase() : null;
+    if (act && !e.shiftKey && !e.repeat && el && kind === 'item' && sh.parts) {
+      const b = ((sh.parts(el) || {}).keys || {})[act];
       if (b) {
-        b.click();
+        if (!(ring.acting && ring.acting.key === ring.key && Date.now() < ring.acting.until)) {
+          ring.acting = { key: ring.key, keys: k.length > 1 ? wordKeys(act) : [k.toUpperCase()], what: (b.textContent || b.value || '').replace(/\s+/g, ' ').trim().slice(0, 24), until: Date.now() + ACT_MS };
+          b.click();
+        }
         return true;
       }
     }
@@ -1342,7 +1442,7 @@
   let autoDone = '';
   function autoRing() {
     const sh = place.shop;
-    if ((sh.blocked && sh.blocked()) || quietNow()) return;
+    if (blockedSoon() || quietNow()) return;
     const box = modalNow();
     const to = box ? (sh.choice && sh.choice(box)) || tilesNow()[0] || null : sh.start ? sh.start() : null;
     if (!to) {
@@ -1375,11 +1475,30 @@
     return v;
   }
   function ringInfo() {
+    const at = performance.now();
+    const age = at - shapeSeen.at;
+    const boxOf = (r) => [Math.round(r.left + window.scrollX), Math.round(r.top + window.scrollY), Math.round(r.width), Math.round(r.height)].join();
+    let s = shapeSeen.v;
+    let rect = s && s.el && s.el.isConnected ? s.el.getBoundingClientRect() : null;
+    const slow = s && s.el && at >= hotUntil && !pumps.size;
+    if (age > (slow ? 400 : 90) || (s && s.el && !rect) || (age > 90 && rect && boxOf(rect) !== shapeSeen.box)) {
+      s = ringShape();
+      rect = s && s.el ? s.el.getBoundingClientRect() : null;
+      shapeSeen = { at, v: s, box: rect ? boxOf(rect) : '' };
+    }
+    if (!s || s.gone) return s;
+    return {
+      ...s,
+      rect,
+      hints: s.hints.map((h) => ({ ...h, rect: h.el.getBoundingClientRect(), within: h.within ? h.within.getBoundingClientRect() : null })).filter((h) => h.rect.width > 0),
+    };
+  }
+  function ringShape() {
     if (!ring || !shop()) return null;
     const sh = place.shop;
     const box = modalNow();
-    if ((sh.blocked && sh.blocked()) || quietNow()) return { gone: true };
-    if (!ring.el.isConnected || (box ? !box.contains(ring.el) : !tilesNow().includes(ring.el))) {
+    if (blockedSoon() || quietNow()) return { gone: true };
+    if (!ring.el.isConnected || (box ? !box.contains(ring.el) : !tilesSoon().includes(ring.el))) {
       const into = box && !box.contains(ring.el) && ring.el.isConnected ? (sh.choice && sh.choice(box)) || tilesNow()[0] : null;
       const el = into || cardByKey(ring.key) || (ring.back && cardByKey(ring.back));
       if (el) {
@@ -1400,6 +1519,7 @@
           col = ring.turning === 'last' ? rows[row].tiles.length - 1 : 0;
         } else {
           row = Math.min(ring.pos ? ring.pos.ri : 0, rows.length - 1);
+          if (row > 0 && ring.tag && rows[row].tiles[0].tagName !== ring.tag && rows[row - 1].tiles[0].tagName === ring.tag) row -= 1;
           col = Math.min(ring.pos ? ring.pos.ci : 0, rows[row].tiles.length - 1);
         }
         ring.turning = null;
@@ -1411,39 +1531,50 @@
       }
     }
     const now = Date.now();
-    if (now - pinnedSeen.at > 400) pinnedSeen = { at: now, v: pinnedNow() };
+    if (now - pinnedSeen.at > (performance.now() < hotUntil ? 400 : 2000)) pinnedSeen = { at: now, v: pinnedNow() };
     const el = ring.el;
     const kind = kindOf(el);
     const count = kind === 'item' ? countOf(ring.key, el) : 0;
+    const site = kind === 'item' ? sh.count(el) : 0;
+    if (ring.open && kind === 'item' && count === 0 && site === 0) ring.open = false;
+    const owed = kind === 'item' && site === 0 && want.has(ring.key) && want.get(ring.key) > 0 ? want.get(ring.key) : 0;
     const hints = [];
     if (kind === 'item') {
       const parts = sh.parts ? sh.parts(el) : null;
       if (parts && (parts.less || parts.more || Object.values(parts.keys || {}).some(Boolean))) {
         if (parts.less) hints.push({ el: parts.less, keys: [ring.open ? '↓' : '-'] });
         if (parts.more) hints.push({ el: parts.more, keys: [ring.open ? '↑' : '='] });
-        for (const [key, b] of Object.entries(parts.keys || {})) if (b) hints.push({ el: b, keys: [key.toUpperCase()] });
+        for (const [key, b] of Object.entries(parts.keys || {})) {
+          if (!b) continue;
+          const word = wordKeys(key);
+          if (word) hints.push({ el: b, keys: word });
+          hints.push({ el: b, keys: [key.toUpperCase()], lift: word ? 1 : 0 });
+        }
       } else {
         const main = sh.main(el);
-        if (main) hints.push({ el: main, keys: ring.open ? ['↓', '↑'] : count > 0 ? ['-', '='] : ['↵'], within: el });
+        if (main) hints.push({ el: main, keys: (owed ? ['•' + owed] : []).concat(ring.open ? ['↓', '↑'] : count > 0 ? ['-', '='] : ['↵']), within: el });
       }
-    } else if (kind === 'spend') hints.push({ el, keys: ['↵'] });
-    if (sh.marks && !box) for (const m of sh.marks()) hints.push(m);
+    } else if (kind === 'spend') hints.push({ el, keys: ['↵'], side: true });
+    if (sh.marks && !box) for (const m of sh.marks()) hints.push({ ...m, mark: true });
     return {
-      rect: el.getBoundingClientRect(),
+      el,
       key: ring.key,
       style: kind === 'spend' ? 'spend' : ring.open ? 'open' : 'here',
       count,
+      badge: kind === 'item' && count > 0 && !ring.open && !ring.touched,
       waiting: kind === 'item' && ((want.has(ring.key) && sh.count(el) !== want.get(ring.key)) || !!(sh.saving && sh.saving(el))),
       tint: sh.tint,
       pinned: box ? 0 : pinnedSeen.v,
-      hints: hints.map((h) => ({ keys: h.keys, rect: h.el.getBoundingClientRect(), within: h.within ? h.within.getBoundingClientRect() : null, top: !!h.top, stuck: !!h.top && stuck(h.el) })).filter((h) => h.rect.width > 0),
+      veil: ring.acting && ring.acting.key === ring.key && now < ring.acting.until ? ring.acting : null,
+      hints: hints.map((h) => ({ keys: h.keys, el: h.el, within: h.within || null, top: !!h.top, stuck: !!h.top && stuck(h.el), side: !!h.side, lift: h.lift || 0, mark: !!h.mark })),
     };
   }
 
   function onKey(e) {
     const mine = () => { e.preventDefault(); e.stopImmediatePropagation(); };
+    if (ring) stir();
     if (!list && document.readyState === 'loading') check();
-    if (shop() && ((place.shop.blocked && place.shop.blocked()) || quietNow(true))) return;
+    if (shop() && (blockedSoon(true) || quietNow(true))) return;
     if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'z' || e.key === 'Z') && shop() && !takesKeys(focused()) && !quietNow()) {
       const site = place.shop.undo && place.shop.undo();
       if (site) {
@@ -1595,16 +1726,21 @@ button:disabled .cap{opacity:.35;background:none;border-color:var(--border-inner
   border-radius:16px;border:2px solid #fff;background:var(--tint);color:#fff;font-size:16px;font-weight:700;line-height:1}
 .badge[data-waiting="1"]{background:#fff;color:var(--tint);border:2px dashed var(--tint)}
 .hint{position:absolute;left:0;top:0;display:flex;align-items:center;gap:4px;height:var(--h,24px);opacity:.96}
-.hint .k{display:flex;align-items:center;justify-content:center;min-width:var(--h,24px);height:100%;padding:0 calc(var(--h,24px)*.28);
+.k{display:flex;align-items:center;justify-content:center;min-width:var(--h,24px);height:var(--h,24px);padding:0 calc(var(--h,24px)*.2);
   border:1px solid rgba(0,0,0,.22);border-radius:calc(var(--h,24px)*.28);background:linear-gradient(#fff,#f1f3f6);
   box-shadow:0 calc(var(--h,24px)*.1) 0 var(--tint-2),0 calc(var(--h,24px)*.1 + 3px) 8px rgba(0,0,0,.16);
-  color:var(--tint);font-size:calc(var(--h,24px)*.44);font-weight:700;line-height:1;white-space:nowrap}
-.hint .k[data-word]::before{content:attr(data-word);margin-right:.4em;font-size:.92em;letter-spacing:.01em}
+  color:var(--tint);font-size:calc(var(--h,24px)*.66);font-weight:700;line-height:1;white-space:nowrap}
+.k[data-pending]{border-radius:999px;background:var(--tint);color:#fff;border:2px dashed rgba(255,255,255,.92);box-shadow:0 0 0 1px var(--tint);font-size:calc(var(--h,24px)*.5)}
+.k[data-word]{font-size:calc(var(--h,24px)*.62);padding:0 calc(var(--h,24px)*.28)}
+.k[data-word]::before{content:attr(data-word);margin-right:.3em;font-size:.75em;letter-spacing:.01em}
+.k[data-long]{font-size:calc(var(--h,24px)*.5);padding:0 calc(var(--h,24px)*.3);letter-spacing:.01em}
+.veil{position:absolute;left:3px;top:3px;right:3px;bottom:3px;border-radius:9px;background:rgba(255,255,255,.8);display:flex;align-items:center;justify-content:center;gap:8px;
+  --h:34px;color:var(--tint);font-size:15px;font-weight:700;line-height:1}
 @media (prefers-reduced-motion:reduce){.band[data-pop="1"],.band[data-bump]{animation:none}}
 @media print{.wrap,.layer{display:none}}
 </style>
 <div class="layer" hidden aria-hidden="true">
-  <div class="ring"><div class="band"></div><span class="badge" hidden></span></div>
+  <div class="ring"><div class="band"></div><div class="veil" hidden></div><span class="badge" hidden></span></div>
   <div class="hints"></div>
 </div>
 <div class="tops" hidden aria-hidden="true"></div>
@@ -1708,6 +1844,7 @@ button:disabled .cap{opacity:.35;background:none;border-color:var(--border-inner
     const ringEl = $('.ring');
     const band = $('.band');
     const badge = $('.badge');
+    const veil = $('.veil');
     const hintsEl = $('.hints');
     const topsEl = $('.tops');
     const cap = (key) => {
@@ -1715,6 +1852,10 @@ button:disabled .cap{opacity:.35;background:none;border-color:var(--border-inner
       el.className = 'k';
       el.textContent = key;
       if (key === '↵') el.setAttribute('data-word', 'enter');
+      else if (key[0] === '•') {
+        el.textContent = key.slice(1);
+        el.setAttribute('data-pending', '1');
+      } else if (key.length > 1) el.setAttribute('data-long', '1');
       return el;
     };
     function chips(list) {
@@ -1741,8 +1882,21 @@ button:disabled .cap{opacity:.35;background:none;border-color:var(--border-inner
     let painting = false;
     let drawn = null;
     let tween = null;
+    let queued = false;
+    let idleTimer = 0;
+    const frame = () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(paint);
+    };
+    const again = () => {
+      const t = performance.now();
+      if (t < hotUntil || glide || (tween && t - tween.t0 < tween.ms + 60)) frame();
+      else if (!idleTimer) idleTimer = setTimeout(() => { idleTimer = 0; frame(); }, 100);
+    };
     band.addEventListener('animationend', () => { band.removeAttribute('data-pop'); band.removeAttribute('data-bump'); });
     function paint(now) {
+      queued = false;
       const info = painting ? ringInfo() : null;
       if (!info) {
         painting = false;
@@ -1751,11 +1905,11 @@ button:disabled .cap{opacity:.35;background:none;border-color:var(--border-inner
         drawn = null;
         return;
       }
-      requestAnimationFrame(paint);
       if (info.gone) {
         layer.hidden = true;
         topsEl.hidden = true;
         drawn = null;
+        again();
         return;
       }
       const sx = window.scrollX;
@@ -1767,7 +1921,8 @@ button:disabled .cap{opacity:.35;background:none;border-color:var(--border-inner
       } else {
         if (!tween || tween.key !== info.key) {
           const g = glide;
-          tween = { key: info.key, from: { x: drawn.x, y: drawn.y, w: drawn.w, h: drawn.h }, to: aim, t0: g ? g.t0 : now, ms: g ? g.ms : RING_MS, ease: g ? g.ease : easeOut };
+          const along = !!g && now - g.t0 < 40;
+          tween = { key: info.key, from: { x: drawn.x, y: drawn.y, w: drawn.w, h: drawn.h }, to: aim, t0: along ? g.t0 : now, ms: along ? g.ms : g ? Math.max(RING_MS, g.t0 + g.ms - now) : RING_MS, ease: along ? g.ease : easeOut };
         } else tween.to = aim;
         const p = Math.min(1, Math.max(0, (now - tween.t0) / tween.ms));
         const e = tween.ease(p);
@@ -1786,12 +1941,24 @@ button:disabled .cap{opacity:.35;background:none;border-color:var(--border-inner
         ringEl.setAttribute('data-kind', info.style);
         if (info.style === 'open') band.setAttribute('data-pop', '1');
       }
-      const showCount = info.count > 0 || info.style === 'open' || info.waiting;
+      const showCount = info.badge;
       badge.hidden = !showCount;
       if (showCount) {
         if (badge.textContent !== String(info.count)) badge.textContent = String(info.count);
         badge.setAttribute('data-waiting', info.waiting ? '1' : '0');
       }
+      veil.hidden = !info.veil;
+      if (info.veil) {
+        const sig = info.veil.keys.join(' ') + '|' + info.veil.what;
+        if (veil.getAttribute('data-sig') !== sig) {
+          veil.setAttribute('data-sig', sig);
+          const what = document.createElement('span');
+          what.textContent = info.veil.what;
+          veil.replaceChildren(...info.veil.keys.map(cap), what);
+        }
+      }
+      const dx = drawn.x - aim.x;
+      const dy = drawn.y - aim.y;
       const low = info.hints.filter((h) => !h.stuck);
       chips(info.hints.filter((h) => h.stuck));
       while (hintsEl.children.length < low.length) {
@@ -1808,26 +1975,46 @@ button:disabled .cap{opacity:.35;background:none;border-color:var(--border-inner
           chip.setAttribute('data-sig', sig);
           chip.replaceChildren(...h.keys.map(cap));
         }
-        const H = h.top ? 22 : h.within ? Math.max(24, Math.min(40, Math.round(h.rect.height))) : h.keys.includes('↵') ? 28 : 22;
+        let H = h.top ? 22 : h.within ? Math.max(24, Math.min(40, Math.round(h.rect.height))) : h.side ? Math.max(22, Math.min(30, Math.round(h.rect.height * 0.7))) : 22;
         chip.style.setProperty('--h', H + 'px');
-        const w = chip.offsetWidth;
+        let w = chip.offsetWidth;
         let hx;
         let hy;
         if (h.top) {
           hx = h.rect.width > 200 ? h.rect.left + 12 : h.rect.left + (h.rect.width - w) / 2;
           hy = h.rect.bottom - 10;
-        } else if (h.within && h.rect.right + 8 + w <= h.within.right - 4) {
+        } else if (h.within) {
+          let gap = 8;
+          const room = h.within.right - 2 - (h.rect.right + 2);
+          if (h.rect.right + gap + w > h.within.right - 4) {
+            gap = 2;
+            for (let i = 0; i < 3 && w > room && room >= 14 && H > 12; i++) {
+              H = Math.max(12, Math.floor(H * room / w) - 1);
+              chip.style.setProperty('--h', H + 'px');
+              w = chip.offsetWidth;
+            }
+          }
+          if (w <= room + 1) {
+            hx = h.rect.right + gap;
+            hy = h.rect.top + (h.rect.height - H) / 2;
+          } else {
+            hx = h.rect.left;
+            hy = h.rect.top - H - 6;
+          }
+        } else if (h.side) {
           hx = h.rect.right + 8;
+          if (hx + w > window.innerWidth - 4) hx = h.rect.right - w - 6;
           hy = h.rect.top + (h.rect.height - H) / 2;
         } else {
-          hx = h.within ? h.rect.left : h.rect.width > 200 ? h.rect.right - w : h.rect.left + (h.rect.width - w) / 2;
-          hy = h.rect.top - H - 6;
+          hx = h.rect.width > 200 ? h.rect.right - w : h.rect.left + (h.rect.width - w) / 2;
+          hy = h.rect.top - H - 6 - h.lift * (H + 4);
         }
         if (!h.top && hy < info.pinned - 2) chip.hidden = true;
-        chip.style.transform = 'translate(' + Math.round(hx + sx) + 'px,' + Math.round(hy + sy) + 'px)';
+        chip.style.transform = 'translate(' + Math.round(hx + sx + (h.mark ? 0 : dx)) + 'px,' + Math.round(hy + sy + (h.mark ? 0 : dy)) + 'px)';
       });
       layer.hidden = false;
       topsEl.hidden = false;
+      again();
     }
 
     return {
@@ -1837,8 +2024,14 @@ button:disabled .cap{opacity:.35;background:none;border-color:var(--border-inner
         mount();
         if (on && !painting) {
           painting = true;
-          requestAnimationFrame(paint);
+          frame();
         }
+      },
+      wake() {
+        if (!painting) return;
+        clearTimeout(idleTimer);
+        idleTimer = 0;
+        frame();
       },
       ringBump(dir) {
         band.removeAttribute('data-bump');
@@ -1936,6 +2129,10 @@ button:disabled .cap{opacity:.35;background:none;border-color:var(--border-inner
   let lastSig = '';
   function check() {
     const found = LISTS.find((l) => l.test()) || null;
+    if (found !== place) {
+      if (ring) ringOff();
+      autoDone = '';
+    }
     place = found;
     if (ring && !shop()) ringOff();
     if (shop()) {
@@ -2004,7 +2201,9 @@ button:disabled .cap{opacity:.35;background:none;border-color:var(--border-inner
       want.delete(key);
       if (run && run.key === key) run = null;
     }
+    stir();
   }, true);
+  window.addEventListener('scroll', () => { if (ring) stir(true); }, { capture: true, passive: true });
   window.addEventListener('popstate', onPop);
   window.addEventListener('pageshow', check);
   setInterval(check, 400);

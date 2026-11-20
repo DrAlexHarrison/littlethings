@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Thrifty Sort",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "Sorts Walmart and Amazon search results by price per ounce, per fluid ounce or per count, cheapest first.",
   "content_scripts": [
     {

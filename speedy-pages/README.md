@@ -13,7 +13,8 @@ Shop Walmart and Amazon from the keyboard.
 | Ctrl+Z or ⌘Z | Undo the last change to an item |
 | s | Search |
 | c | Cart, then checkout |
-| R and L, in the cart | Remove, save for later |
+| Delete or R, in the cart | Remove |
+| Backspace or L, in the cart | Save for later |
 | Enter on Place order | Places the order, once the double ring has been on it for a second |
 | Esc | Close the count. Again: take the ring away. |
 
@@ -29,7 +30,7 @@ Chrome, Edge, Brave, Vivaldi, Opera:
 3. Open `chrome://extensions`, turn on Developer mode, click Load unpacked and pick that folder.
 4. Reload your Walmart and Amazon tabs.
 
-Firefox: open [speedy-pages-1.0.0.xpi](https://github.com/DrAlexHarrison/littlethings/releases/download/speedy-pages-v1.0.0/speedy-pages-1.0.0.xpi), then Continue to Installation, then Add.
+Firefox: open [speedy-pages-1.0.1.xpi](https://github.com/DrAlexHarrison/littlethings/releases/download/speedy-pages-v1.0.1/speedy-pages-1.0.1.xpi), then Continue to Installation, then Add.
 
 Or ask your AI to "install Speedy Pages from github.com/DrAlexHarrison/littlethings".
 
