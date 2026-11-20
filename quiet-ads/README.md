@@ -34,7 +34,7 @@ By hand, in Chrome:
 4. Click Load unpacked and pick that `extension` folder.
 5. Reload any streaming tabs you had open.
 
-In Firefox: open [quiet-ads-1.1.0.xpi](https://github.com/DrAlexHarrison/littlethings/releases/download/quiet-ads-v1.1.0/quiet-ads-1.1.0.xpi) in Firefox. It asks before installing; choose Continue to Installation, then Add.
+In Firefox: open [Quiet Ads on Firefox Add-ons](https://addons.mozilla.org/firefox/addon/quiet-ads/) and click Add to Firefox. Firefox keeps it up to date.
 
 ## Good to know
 

@@ -11,9 +11,9 @@ Chrome, Edge, Brave, Vivaldi, Opera:
 3. Click Load unpacked and pick the folder that holds `manifest.json`.
 4. Reload the tabs it works on.
 
-Firefox 140 or newer: open the signed file, then Continue to Installation, then Add.
+Firefox 140 or newer: Quiet Ads installs from its Firefox Add-ons page (Add to Firefox; Firefox updates it). For the others, open the signed file, then Continue to Installation, then Add.
 
-- Quiet Ads: https://github.com/DrAlexHarrison/littlethings/releases/download/quiet-ads-v1.1.0/quiet-ads-1.1.0.xpi
+- Quiet Ads: https://addons.mozilla.org/firefox/addon/quiet-ads/
 - Thrifty Sort: https://github.com/DrAlexHarrison/littlethings/releases/download/thrifty-sort-v1.8.0/thrifty-sort-1.8.0.xpi
 - Speedy Pages: https://github.com/DrAlexHarrison/littlethings/releases/download/speedy-pages-v1.0.0/speedy-pages-1.0.0.xpi
 
